@@ -172,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+data/
+uv.lock
+.python-version
+finetuned_model.pth
+first_vit*
