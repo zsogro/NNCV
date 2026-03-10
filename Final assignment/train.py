@@ -31,7 +31,7 @@ from torchvision.transforms.v2 import (
     InterpolationMode
 )
 
-from model import Model
+from dino_model import Model
 
 
 # Mapping class IDs to train IDs
