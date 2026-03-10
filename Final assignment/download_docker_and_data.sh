@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=9
+#SBATCH --cpus-per-task=1
 #SBATCH --gpus=1
-#SBATCH --partition=gpu_mig
+#SBATCH --partition=gpu_a100
 #SBATCH --time=3:00:00
 
 # Pull container from dockerhub
-apptainer pull container.sif docker://cclaess/5lsm0:v1
+# apptainer pull container.sif docker://cclaess/5lsm0:v1
 
 # Use the huggingface-cli package inside the container to download the data
 mkdir -p data
