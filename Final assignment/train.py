@@ -71,6 +71,7 @@ def get_args_parser():
 
 
 def main(args):
+    patch_size = 14  # ViT-S patch size, needed for calculating the output resolution of the model
     # Initialize wandb for logging
     wandb.init(
         project="5lsm0-cityscapes-segmentation",  # Project name in wandb
@@ -94,7 +95,7 @@ def main(args):
     # Define the transforms to apply to the data
     img_transform = Compose([
     ToImage(),
-    Resize((256, 256)),
+    Resize((18*patch_size, 18*patch_size), interpolation=InterpolationMode.BILINEAR),
     ToDtype(torch.float32, scale=True),
     Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
@@ -102,7 +103,7 @@ def main(args):
     # Target transform (mask)
     target_transform = Compose([
         ToImage(),
-        Resize((256, 256), interpolation=InterpolationMode.NEAREST),
+        Resize((18*patch_size, 18*patch_size), interpolation=InterpolationMode.NEAREST),
         ToDtype(torch.int64),  # no scaling
     ])
 
