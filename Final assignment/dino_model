@@ -1,0 +1,93 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class Model(nn.Module):
+    """
+    DINOv2 backbone with a semantic segmentation head.
+
+    The class name and default constructor arguments follow the same pattern as
+    model.py so it can be used as a drop-in replacement.
+    """
+
+    def __init__(
+        self,
+        in_channels=3,
+        n_classes=19,
+        backbone_name="facebook/dinov2-base",
+        decoder_channels=256,
+        pretrained=True,
+        freeze_backbone=False,
+    ):
+        super().__init__()
+
+        if in_channels != 3:
+            raise ValueError("DINOv2 expects RGB input (in_channels must be 3).")
+
+        try:
+            from transformers import Dinov2Config, Dinov2Model
+        except ImportError as exc:
+            raise ImportError(
+                "transformers is required for dino_model.py. "
+                "Install it with: pip install transformers"
+            ) from exc
+
+        if pretrained:
+            self.backbone = Dinov2Model.from_pretrained(backbone_name)
+        else:
+            config = Dinov2Config()
+            self.backbone = Dinov2Model(config)
+
+        self.patch_size = int(self.backbone.config.patch_size)
+        hidden_dim = int(self.backbone.config.hidden_size)
+
+        self.decoder = nn.Sequential(
+            nn.Conv2d(hidden_dim, decoder_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(decoder_channels),
+            nn.GELU(),
+            nn.Conv2d(decoder_channels, decoder_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(decoder_channels),
+            nn.GELU(),
+            nn.Dropout2d(p=0.1),
+        )
+        self.classifier = nn.Conv2d(decoder_channels, n_classes, kernel_size=1)
+
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+
+    def forward(self, x):
+        if x.shape[1] != 3:
+            raise ValueError(f"Expected 3 input channels, but got {x.shape[1]}")
+
+        original_h, original_w = x.shape[-2:]
+
+        pad_h = (self.patch_size - original_h % self.patch_size) % self.patch_size
+        pad_w = (self.patch_size - original_w % self.patch_size) % self.patch_size
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
+
+        padded_h, padded_w = x.shape[-2:]
+        feat_h = padded_h // self.patch_size
+        feat_w = padded_w // self.patch_size
+
+        outputs = self.backbone(pixel_values=x)
+        patch_tokens = outputs.last_hidden_state[:, 1:, :]
+
+        if patch_tokens.shape[1] != feat_h * feat_w:
+            raise RuntimeError(
+                "Unexpected token count from DINOv2 backbone. "
+                f"Got {patch_tokens.shape[1]} tokens, expected {feat_h * feat_w}."
+            )
+
+        features = patch_tokens.reshape(x.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
+
+        logits = self.decoder(features)
+        logits = self.classifier(logits)
+        logits = F.interpolate(logits, size=(padded_h, padded_w), mode="bilinear", align_corners=False)
+
+        if pad_h > 0 or pad_w > 0:
+            logits = logits[..., :original_h, :original_w]
+
+        return logits
