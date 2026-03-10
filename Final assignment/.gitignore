@@ -2,3 +2,5 @@ data/
 *.sif
 *.out
 .env
+checkpoints/
+model.pt
