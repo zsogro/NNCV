@@ -5,10 +5,10 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels=3, num_classes=19):
+    def __init__(self, in_channels=3, n_classes=19):
         super().__init__()
         self.in_channels = in_channels
-        self.num_classes = num_classes
+        self.n_classes = n_classes
 
         # Load pretrained DINOv2 backbone
         # https://github.com/facebookresearch/dinov2
@@ -31,7 +31,7 @@ class Model(nn.Module):
             nn.BatchNorm2d(256),
             nn.ReLU(),
 
-            nn.Conv2d(256, self.num_classes, kernel_size=1)
+            nn.Conv2d(256, self.n_classes, kernel_size=1)
         )
 
     def forward(self, x):
