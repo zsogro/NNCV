@@ -1,6 +1,6 @@
 """
 This script provides and example implementation of a prediction pipeline 
-for a PyTorch U-Net model. It loads a pre-trained model, processes input 
+for a DINOv2 model with a segmentation head. It loads a pre-trained model, processes input 
 images, and saves the predicted segmentation masks. 
 
 You can use this file for submissions to the Challenge server. Customize 
@@ -32,6 +32,7 @@ IMAGE_DIR = "/data"
 OUTPUT_DIR = "/output"
 MODEL_PATH = "/app/model.pt"
 
+PATCH_SIZE = 14  # ViT-S patch size, used for postprocessing to ensure correct resizing of output masks
 
 def preprocess(img: Image.Image) -> torch.Tensor:
     # Implement your preprocessing steps here
@@ -39,7 +40,7 @@ def preprocess(img: Image.Image) -> torch.Tensor:
     # Return a tensor suitable for model input
     transform = Compose([
         ToImage(),
-        Resize(size=(256, 256), interpolation=InterpolationMode.BILINEAR),
+        Resize(size=(18*PATCH_SIZE, 18*PATCH_SIZE), interpolation=InterpolationMode.BILINEAR),
         ToDtype(dtype=torch.float32, scale=True),
         Normalize(mean=(0.5,), std=(0.5,)),
     ])
@@ -66,8 +67,8 @@ def postprocess(pred: torch.Tensor, original_shape: tuple) -> np.ndarray:
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Load model
     model = Model()
+
     state_dict = torch.load(
         MODEL_PATH, 
         map_location=device,
