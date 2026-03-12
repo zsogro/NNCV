@@ -6,3 +6,6 @@ checkpoints/
 model.pt
 *.tar
 wandb/
+pyproject.toml
+local_data/
+local_output/
