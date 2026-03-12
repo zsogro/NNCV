@@ -58,20 +58,20 @@ def convert_train_id_to_color(prediction: torch.Tensor) -> torch.Tensor:
 
 def get_args_parser():
 
-    parser = ArgumentParser("Training script for a PyTorch Dinov2 model with segmentation head")
+    parser = ArgumentParser("Training script for a PyTorch Dinov3 model with a linear segmentation head")
     parser.add_argument("--data-dir", type=str, default="./data/cityscapes", help="Path to the training data")
     parser.add_argument("--batch-size", type=int, default=64, help="Training batch size")
     parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--num-workers", type=int, default=10, help="Number of workers for data loaders")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--experiment-id", type=str, default="dinov2-training", help="Experiment ID for Weights & Biases")
+    parser.add_argument("--experiment-id", type=str, default="dinov3-training", help="Experiment ID for Weights & Biases")
 
     return parser
 
 
 def main(args):
-    patch_size = 14  # ViT-S patch size, needed for calculating the output resolution of the model
+    patch_size = Model.PATCH_SIZE
     # Initialize wandb for logging
     wandb.init(
         project="5lsm0-cityscapes-segmentation",  # Project name in wandb
@@ -149,7 +149,10 @@ def main(args):
     criterion = nn.CrossEntropyLoss(ignore_index=255)  # Ignore the void class
 
     # Define the optimizer
-    optimizer = AdamW(model.parameters(), lr=args.lr)
+    optimizer = AdamW(
+        (parameter for parameter in model.parameters() if parameter.requires_grad),
+        lr=args.lr,
+    )
 
     # Training loop
     best_valid_loss = float('inf')
@@ -238,6 +241,7 @@ def main(args):
             f"final_model-epoch={epoch:04}-val_loss={valid_loss:04}.pt"
         )
     )
+
     wandb.finish()
 
 

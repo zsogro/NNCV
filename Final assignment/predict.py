@@ -32,7 +32,7 @@ IMAGE_DIR = "/data"
 OUTPUT_DIR = "/output"
 MODEL_PATH = "/app/model.pt"
 
-PATCH_SIZE = 14  # ViT-S patch size, used for postprocessing to ensure correct resizing of output masks
+PATCH_SIZE = Model.PATCH_SIZE  # ViT-S patch size, used for postprocessing to ensure correct resizing of output masks
 
 def preprocess(img: Image.Image) -> torch.Tensor:
     # Implement your preprocessing steps here
@@ -76,7 +76,7 @@ def main():
     )
     model.load_state_dict(
         state_dict, 
-        strict=True,  # Ensure the state dict matches the model architecture
+        strict=True,
     )
     model.eval().to(device)
 

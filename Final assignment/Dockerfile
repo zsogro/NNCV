@@ -22,12 +22,10 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     pillow
 
-# Pre-download DINOv2 model to torch hub cache for offline inference
-RUN python3 -c "import torch; torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')"
-
 WORKDIR /app
 COPY predict.py /app/predict.py
-COPY model.py /app/model.py
+COPY head.py /app/head.py
 COPY model.pt /app/model.pt
+COPY model.py /app/model.py
 
 ENTRYPOINT ["python", "/app/predict.py"]
