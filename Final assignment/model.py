@@ -1,6 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pathlib import Path
+
+try:
+    from torchvision.models import vit_s_16
+except ImportError:
+    vit_s_16 = None
 
 from head import LinearHead
 
@@ -9,19 +15,22 @@ class Model(nn.Module):
 
     EMBED_DIM = 384
     PATCH_SIZE = 16
+    BACKBONE_WEIGHTS = "dinov3_vits16_pretrain_lvd1689m-08c60483.pth" 
 
     def __init__(self, in_channels=3, n_classes=19):
         super().__init__()
         self.in_channels = in_channels
         self.n_classes = n_classes
 
-        # Load pretrained DINOv3 backbone
-        # https://github.com/facebookresearch/dinov3
-        # Model is cached in torch.hub during Docker build for offline inference
-        self.backbone = torch.hub.load(
-            'facebookresearch/dinov3',
-            'dinov3_vits16'
-        )
+        if vit_s_16 is None:
+            raise ImportError(
+                "torchvision is required for vit_s_16. Install it with: pip install torchvision"
+            )
+
+        # Build ViT-S/16 backbone architecture, then load local checkpoint weights.
+        self.backbone = vit_s_16(weights=None)
+        self._load_backbone_weights(self.BACKBONE_WEIGHTS)
+
         # ViT-S/16 embedding size
         self.embed_dim = self.EMBED_DIM
         self.patch_size = self.PATCH_SIZE
@@ -42,14 +51,57 @@ class Model(nn.Module):
         self.backbone.eval()
         return self
 
-    def _extract_patch_tokens(self, features):
-        if isinstance(features, dict):
-            for key in ("x_norm_patchtokens", "x_patchtokens", "patchtokens"):
-                if key in features:
-                    return features[key]
-        if torch.is_tensor(features):
-            return features
-        raise KeyError("Could not find patch tokens in backbone features output")
+    def _load_backbone_weights(self, weights_path):
+        checkpoint_path = Path(weights_path)
+        if not checkpoint_path.is_absolute():
+            checkpoint_path = Path(__file__).resolve().parent / checkpoint_path
+
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(f"Backbone checkpoint not found: {checkpoint_path}")
+
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        state_dict = checkpoint
+        if isinstance(checkpoint, dict):
+            if "state_dict" in checkpoint and isinstance(checkpoint["state_dict"], dict):
+                state_dict = checkpoint["state_dict"]
+            elif "model" in checkpoint and isinstance(checkpoint["model"], dict):
+                state_dict = checkpoint["model"]
+
+        if not isinstance(state_dict, dict):
+            raise TypeError("Checkpoint does not contain a valid state_dict")
+
+        cleaned_state_dict = {}
+        prefixes = (
+            "module.",
+            "backbone.",
+            "teacher.backbone.",
+            "student.backbone.",
+        )
+        for key, value in state_dict.items():
+            if not torch.is_tensor(value):
+                continue
+            clean_key = key
+            for prefix in prefixes:
+                if clean_key.startswith(prefix):
+                    clean_key = clean_key[len(prefix):]
+                    break
+            cleaned_state_dict[clean_key] = value
+
+        load_info = self.backbone.load_state_dict(cleaned_state_dict, strict=False)
+        if len(load_info.missing_keys) == len(self.backbone.state_dict()):
+            raise RuntimeError(
+                "No backbone weights matched vit_s_16. "
+                "Verify that the checkpoint matches torchvision VisionTransformer naming."
+            )
+
+    def _forward_backbone_patch_tokens(self, x):
+        # Mirror torchvision VisionTransformer forward path and keep patch tokens.
+        tokens = self.backbone._process_input(x)
+        batch_size = tokens.shape[0]
+        class_token = self.backbone.class_token.expand(batch_size, -1, -1)
+        tokens = torch.cat((class_token, tokens), dim=1)
+        tokens = self.backbone.encoder(tokens)
+        return tokens[:, 1:, :]
 
     def forward(self, x):
 
@@ -60,9 +112,7 @@ class Model(nn.Module):
 
         # Extract patch tokens
         with torch.no_grad():
-            features = self.backbone.forward_features(x)
-
-        patch_tokens = self._extract_patch_tokens(features)
+            patch_tokens = self._forward_backbone_patch_tokens(x)
 
         # Convert tokens -> feature map
         n_patches = patch_tokens.shape[1]
