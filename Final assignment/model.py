@@ -10,8 +10,8 @@ class Model(nn.Module):
 
     EMBED_DIM = 768
     PATCH_SIZE = 16
-    BACKBONE_WEIGHTS = "Final assignment/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
-    BACKBONE_REPO = Path(__file__).resolve().parents[1] / "dinov3"
+    BACKBONE_WEIGHTS = "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
+    BACKBONE_REPO = "dinov3"
 
     def __init__(self, in_channels=3, n_classes=19):
         super().__init__()
