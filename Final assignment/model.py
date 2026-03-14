@@ -2,36 +2,29 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
-
-try:
-    from torchvision.models import vit_s_16
-except ImportError:
-    vit_s_16 = None
+import re
+from torchvision.models import vit_b_16
 
 from head import LinearHead
 
 
 class Model(nn.Module):
 
-    EMBED_DIM = 384
+    EMBED_DIM = 768
     PATCH_SIZE = 16
-    BACKBONE_WEIGHTS = "dinov3_vits16_pretrain_lvd1689m-08c60483.pth" 
+    BACKBONE_IMAGE_SIZE = 288
+    BACKBONE_WEIGHTS = "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth" 
 
     def __init__(self, in_channels=3, n_classes=19):
         super().__init__()
         self.in_channels = in_channels
         self.n_classes = n_classes
 
-        if vit_s_16 is None:
-            raise ImportError(
-                "torchvision is required for vit_s_16. Install it with: pip install torchvision"
-            )
-
-        # Build ViT-S/16 backbone architecture, then load local checkpoint weights.
-        self.backbone = vit_s_16(weights=None)
+        # Build ViT-B/16 backbone architecture, then load local checkpoint weights.
+        self.backbone = vit_b_16(weights=None, image_size=self.BACKBONE_IMAGE_SIZE)
         self._load_backbone_weights(self.BACKBONE_WEIGHTS)
 
-        # ViT-S/16 embedding size
+        # ViT-B/16 embedding size
         self.embed_dim = self.EMBED_DIM
         self.patch_size = self.PATCH_SIZE
 
@@ -87,12 +80,76 @@ class Model(nn.Module):
                     break
             cleaned_state_dict[clean_key] = value
 
-        load_info = self.backbone.load_state_dict(cleaned_state_dict, strict=False)
+        remapped_state_dict = self._remap_dinov3_to_torchvision(cleaned_state_dict)
+
+        expected_state_dict = self.backbone.state_dict()
+        compatible_state_dict = {
+            key: value
+            for key, value in remapped_state_dict.items()
+            if key in expected_state_dict and expected_state_dict[key].shape == value.shape
+        }
+
+        # DINOv3 uses RoPE, while torchvision ViT uses absolute positional embeddings.
+        # Keep positional embeddings zeroed when no compatible checkpoint tensor is available.
+        if "encoder.pos_embedding" not in compatible_state_dict:
+            compatible_state_dict["encoder.pos_embedding"] = torch.zeros_like(
+                expected_state_dict["encoder.pos_embedding"]
+            )
+
+        load_info = self.backbone.load_state_dict(compatible_state_dict, strict=False)
         if len(load_info.missing_keys) == len(self.backbone.state_dict()):
             raise RuntimeError(
-                "No backbone weights matched vit_s_16. "
+                "No backbone weights matched vit_b_16. "
                 "Verify that the checkpoint matches torchvision VisionTransformer naming."
             )
+
+    def _remap_dinov3_to_torchvision(self, state_dict):
+        remapped = {}
+
+        # Stem / tokens
+        if "cls_token" in state_dict:
+            remapped["class_token"] = state_dict["cls_token"]
+        if "patch_embed.proj.weight" in state_dict:
+            remapped["conv_proj.weight"] = state_dict["patch_embed.proj.weight"]
+        if "patch_embed.proj.bias" in state_dict:
+            remapped["conv_proj.bias"] = state_dict["patch_embed.proj.bias"]
+
+        # Transformer blocks
+        block_pattern = re.compile(r"^blocks\.(\d+)\.(.+)$")
+        for key, value in state_dict.items():
+            match = block_pattern.match(key)
+            if not match:
+                continue
+
+            block_idx, suffix = match.groups()
+            prefix = f"encoder.layers.encoder_layer_{block_idx}."
+
+            mapping = {
+                "norm1.weight": "ln_1.weight",
+                "norm1.bias": "ln_1.bias",
+                "attn.qkv.weight": "self_attention.in_proj_weight",
+                "attn.qkv.bias": "self_attention.in_proj_bias",
+                "attn.proj.weight": "self_attention.out_proj.weight",
+                "attn.proj.bias": "self_attention.out_proj.bias",
+                "norm2.weight": "ln_2.weight",
+                "norm2.bias": "ln_2.bias",
+                "mlp.fc1.weight": "mlp.0.weight",
+                "mlp.fc1.bias": "mlp.0.bias",
+                "mlp.fc2.weight": "mlp.3.weight",
+                "mlp.fc2.bias": "mlp.3.bias",
+            }
+
+            target_suffix = mapping.get(suffix)
+            if target_suffix is not None:
+                remapped[prefix + target_suffix] = value
+
+        # Final norm
+        if "norm.weight" in state_dict:
+            remapped["encoder.ln.weight"] = state_dict["norm.weight"]
+        if "norm.bias" in state_dict:
+            remapped["encoder.ln.bias"] = state_dict["norm.bias"]
+
+        return remapped
 
     def _forward_backbone_patch_tokens(self, x):
         # Mirror torchvision VisionTransformer forward path and keep patch tokens.
