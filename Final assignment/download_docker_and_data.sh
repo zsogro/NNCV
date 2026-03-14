@@ -7,9 +7,9 @@
 #SBATCH --time=3:00:00
 
 # Pull container from dockerhub
-# apptainer pull container.sif docker://cclaess/5lsm0:v1
+# apptainer pull container_v2.sif docker://zsogro/nncv-dinov3:latest
 
 # Use the huggingface-cli package inside the container to download the data
-mkdir -p data
-apptainer exec container.sif \
-    huggingface-cli download TimJaspersTue/5LSM0 --local-dir ./data --repo-type dataset --resume-download
+# mkdir -p data
+# apptainer exec container.sif \
+#     huggingface-cli download TimJaspersTue/5LSM0 --local-dir ./data --repo-type dataset --resume-download
