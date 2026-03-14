@@ -53,7 +53,7 @@ Copy-Item "Final assignment\checkpoints\unet-training\best_model-epoch=....pt" "
 From repo root:
 
 ```bash
-docker build -t nncv-submission:latest -f "Final assignment/Dockerfile" "Final assignment"
+docker build -t nncv-submission:latest .
 ```
 
 This creates a self-contained image with:

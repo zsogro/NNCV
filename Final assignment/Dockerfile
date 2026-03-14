@@ -20,12 +20,14 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir \
     torch torchvision --index-url https://download.pytorch.org/whl/cu126
 RUN pip install --no-cache-dir \
-    pillow
+    pillow torchmetrics termcolor 
 
 WORKDIR /app
 COPY predict.py /app/predict.py
+COPY dinov3 /app/dinov3
 COPY head.py /app/head.py
-COPY model.pt /app/model.pt
+COPY dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth /app/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
+COPY model_vit_b16_linear.pt /app/model.pt
 COPY model.py /app/model.py
 
 ENTRYPOINT ["python", "/app/predict.py"]
