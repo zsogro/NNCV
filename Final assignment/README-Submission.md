@@ -72,7 +72,7 @@ Create local folders:
 Run (Linux/macOS shell):
 
 ```bash
-docker run --rm \
+docker run --network none --rm \
   -v "$(pwd)/local_data:/data" \
   -v "$(pwd)/local_output:/output" \
   nncv-submission:latest
