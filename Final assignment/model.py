@@ -13,10 +13,11 @@ class Model(nn.Module):
     BACKBONE_WEIGHTS = "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
     BACKBONE_REPO = "dinov3"
 
-    def __init__(self, in_channels=3, n_classes=19):
+    def __init__(self, in_channels=3, n_classes=19, load_pretrained_backbone=True):
         super().__init__()
         self.in_channels = in_channels
         self.n_classes = n_classes
+        self.load_pretrained_backbone = load_pretrained_backbone
 
         # Build DINOv3 ViT-B/16 from local hub repo and load local checkpoint weights.
         self.backbone = torch.hub.load(
@@ -25,7 +26,8 @@ class Model(nn.Module):
             source="local",
             pretrained=False,
         )
-        self._load_backbone_weights(self.BACKBONE_WEIGHTS)
+        if self.load_pretrained_backbone:
+            self._load_backbone_weights(self.BACKBONE_WEIGHTS)
 
         # ViT-B/16 embedding size
         self.embed_dim = self.EMBED_DIM

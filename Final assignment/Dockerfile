@@ -26,7 +26,6 @@ WORKDIR /app
 COPY predict.py /app/predict.py
 COPY dinov3 /app/dinov3
 COPY head.py /app/head.py
-COPY dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth /app/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
 COPY model_vit_b16_linear.pt /app/model.pt
 COPY model.py /app/model.py
 

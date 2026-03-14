@@ -67,7 +67,9 @@ def postprocess(pred: torch.Tensor, original_shape: tuple) -> np.ndarray:
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = Model()
+    # model.pt contains full model weights (backbone + segmentation head),
+    # so loading the separate local backbone checkpoint is not required here.
+    model = Model(load_pretrained_backbone=False)
 
     state_dict = torch.load(
         MODEL_PATH, 
