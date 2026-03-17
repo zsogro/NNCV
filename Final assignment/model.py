@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 
-from head import LinearHead
+from head import MLPHead
 
 
 class Model(nn.Module):
@@ -14,7 +14,14 @@ class Model(nn.Module):
     BACKBONE_WEIGHTS = "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
     BACKBONE_REPO = "dinov3"
 
-    def __init__(self, in_channels=3, n_classes=19, load_pretrained_backbone=True):
+    def __init__(
+        self,
+        in_channels=3,
+        n_classes=19,
+        load_pretrained_backbone=True,
+        head_hidden_channels=512,
+        head_num_layers=3,
+    ):
         super().__init__()
         self.in_channels = in_channels
         self.n_classes = n_classes
@@ -38,9 +45,11 @@ class Model(nn.Module):
             parameter.requires_grad = False
         self.backbone.eval()
 
-        self.seg_head = LinearHead(
+        self.seg_head = MLPHead(
             in_channels=[self.embed_dim],
             n_output_channels=self.n_classes,
+            hidden_channels=head_hidden_channels,
+            num_layers=head_num_layers,
             use_batchnorm=False,
             use_cls_token=False,
         )
