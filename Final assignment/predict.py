@@ -69,7 +69,7 @@ def main():
 
     # model.pt contains full model weights (backbone + segmentation head),
     # so loading the separate local backbone checkpoint is not required here.
-    model = Model(load_pretrained_backbone=False)
+    model = Model(load_backbone_for_training=False)
 
     state_dict = torch.load(
         MODEL_PATH, 
