@@ -10,6 +10,7 @@ class Model(nn.Module):
 
     EMBED_DIM = 768
     PATCH_SIZE = 16
+    RESOLUTION = 256
     BACKBONE_WEIGHTS = "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
     BACKBONE_REPO = "dinov3"
 
@@ -24,10 +25,10 @@ class Model(nn.Module):
             str(self.BACKBONE_REPO),
             "dinov3_vitb16",
             source="local",
-            pretrained=False,
+            weights=self.BACKBONE_WEIGHTS,
         )
-        if self.load_pretrained_backbone:
-            self._load_backbone_weights(self.BACKBONE_WEIGHTS)
+        # if self.load_pretrained_backbone:
+        #     self._load_backbone_weights(self.BACKBONE_WEIGHTS)
 
         # ViT-B/16 embedding size
         self.embed_dim = self.EMBED_DIM

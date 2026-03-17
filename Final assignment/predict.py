@@ -33,14 +33,14 @@ OUTPUT_DIR = "/output"
 MODEL_PATH = "/app/model.pt"
 
 PATCH_SIZE = Model.PATCH_SIZE  # ViT-S patch size, used for postprocessing to ensure correct resizing of output masks
-
+PATCH_NR = Model.RESOLUTION // PATCH_SIZE  # Number of patches along one dimension, used for postprocessing to ensure correct resizing of output masks
 def preprocess(img: Image.Image) -> torch.Tensor:
     # Implement your preprocessing steps here
     # For example, resizing, normalization, etc.
     # Return a tensor suitable for model input
     transform = Compose([
         ToImage(),
-        Resize(size=(18*PATCH_SIZE, 18*PATCH_SIZE), interpolation=InterpolationMode.BILINEAR),
+        Resize(size=(PATCH_NR*PATCH_SIZE, PATCH_NR*PATCH_SIZE), interpolation=InterpolationMode.BILINEAR),
         ToDtype(dtype=torch.float32, scale=True),
         Normalize(mean=(0.5,), std=(0.5,)),
     ])

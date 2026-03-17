@@ -78,6 +78,7 @@ def get_args_parser():
 
 def main(args):
     patch_size = Model.PATCH_SIZE
+    patch_nr = Model.RESOLUTION // patch_size
     # Initialize wandb for logging
     wandb.init(
         project="5lsm0-cityscapes-segmentation",  # Project name in wandb
@@ -101,7 +102,7 @@ def main(args):
     # Define the transforms to apply to the data
     img_transform = Compose([
     ToImage(),
-    Resize((18*patch_size, 18*patch_size), interpolation=InterpolationMode.BILINEAR),
+    Resize((patch_nr*patch_size, patch_nr*patch_size), interpolation=InterpolationMode.BILINEAR),
     ToDtype(torch.float32, scale=True),
     Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
@@ -109,7 +110,7 @@ def main(args):
     # Target transform (mask)
     target_transform = Compose([
         ToImage(),
-        Resize((18*patch_size, 18*patch_size), interpolation=InterpolationMode.NEAREST),
+        Resize((patch_nr*patch_size, patch_nr*patch_size), interpolation=InterpolationMode.NEAREST),
         ToDtype(torch.int64),  # no scaling
     ])
 
