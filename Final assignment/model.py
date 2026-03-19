@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 
-from head import LinearHead,MLPHead
+from head import LinearHead, MLPHead
 
 
 class Model(nn.Module):
@@ -45,11 +45,18 @@ class Model(nn.Module):
             parameter.requires_grad = False
         self.backbone.eval()
 
-        self.seg_head = MLPHead(
+        # self.seg_head = MLPHead(
+        #     in_channels=[self.embed_dim],
+        #     n_output_channels=self.n_classes,
+        #     hidden_channels=head_hidden_channels,
+        #     num_layers=head_num_layers,
+        #     use_batchnorm=False,
+        #     use_cls_token=False,
+        # )
+
+        self.seg_head = LinearHead(
             in_channels=[self.embed_dim],
             n_output_channels=self.n_classes,
-            hidden_channels=head_hidden_channels,
-            num_layers=head_num_layers,
             use_batchnorm=False,
             use_cls_token=False,
         )
