@@ -44,7 +44,10 @@ class SegmentationTrainTransforms:
         self.to_image = ToImage()
         self.to_float = ToDtype(torch.float32, scale=True)
         self.to_long = ToDtype(torch.int64)
-        self.normalize = Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        self.normalize = Normalize(
+            mean=(0.485, 0.456, 0.406),
+            std=(0.229, 0.224, 0.225),
+        )
         self.color_jitter = ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05)
         self.hflip = RandomHorizontalFlip(p=1.0)
 
@@ -97,7 +100,10 @@ class SegmentationEvalTransforms:
             ToImage(),
             Resize((size, size), interpolation=InterpolationMode.BILINEAR),
             ToDtype(torch.float32, scale=True),
-            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            Normalize(
+                mean=(0.485, 0.456, 0.406),
+                std=(0.229, 0.224, 0.225),
+            ),
         ])
         self.target_transform = Compose([
             ToImage(),
