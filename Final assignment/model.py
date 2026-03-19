@@ -8,7 +8,7 @@ from head import MLPHead
 
 class Model(nn.Module):
 
-    EMBED_DIM = 768
+    EMBED_DIM = 1024 # large:1024, base:768
     PATCH_SIZE = 16
     RESOLUTION = 512
     PRETRAINED_BACKBONE_WEIGHTS = "dinov3_vitl16_pretrained_weights.pth"
