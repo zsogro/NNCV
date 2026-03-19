@@ -42,7 +42,10 @@ def preprocess(img: Image.Image) -> torch.Tensor:
         ToImage(),
         Resize(size=(PATCH_NR*PATCH_SIZE, PATCH_NR*PATCH_SIZE), interpolation=InterpolationMode.BILINEAR),
         ToDtype(dtype=torch.float32, scale=True),
-        Normalize(mean=(0.5,), std=(0.5,)),
+        Normalize(
+                mean=(0.485, 0.456, 0.406),
+                std=(0.229, 0.224, 0.225),
+            ),
     ])
 
     img = transform(img)
