@@ -11,3 +11,4 @@ local_data/
 local_output/
 *.pth
 *.pt
+STRATEGY.md

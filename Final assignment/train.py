@@ -25,13 +25,88 @@ from torchvision.utils import make_grid
 from torchvision.transforms.v2 import (
     Compose,
     Normalize,
+    ColorJitter,
+    RandomResizedCrop,
     Resize,
     ToImage,
     ToDtype,
+    RandomHorizontalFlip,
     InterpolationMode
 )
+from torchvision.transforms.v2 import functional as F
 
 from model import Model
+
+
+class SegmentationTrainTransforms:
+    def __init__(self, size: int):
+        self.size = size
+        self.to_image = ToImage()
+        self.to_float = ToDtype(torch.float32, scale=True)
+        self.to_long = ToDtype(torch.int64)
+        self.normalize = Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        self.color_jitter = ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05)
+        self.hflip = RandomHorizontalFlip(p=1.0)
+
+    def __call__(self, image, target):
+        image = self.to_image(image)
+        target = self.to_image(target)
+
+        # Keep image and target aligned by sampling one crop and reusing it.
+        top, left, height, width = RandomResizedCrop.get_params(
+            image,
+            scale=(0.6, 1.0),
+            ratio=(0.75, 1.3333333333333333),
+        )
+
+        image = F.resized_crop(
+            image,
+            top=top,
+            left=left,
+            height=height,
+            width=width,
+            size=(self.size, self.size),
+            interpolation=InterpolationMode.BILINEAR,
+        )
+        target = F.resized_crop(
+            target,
+            top=top,
+            left=left,
+            height=height,
+            width=width,
+            size=(self.size, self.size),
+            interpolation=InterpolationMode.NEAREST,
+        )
+
+        if torch.rand(1).item() < 0.5:
+            image = self.hflip(image)
+            target = self.hflip(target)
+
+        if torch.rand(1).item() < 0.8:
+            image = self.color_jitter(image)
+
+        image = self.to_float(image)
+        image = self.normalize(image)
+        target = self.to_long(target)
+        return image, target
+
+
+class SegmentationEvalTransforms:
+    def __init__(self, size: int):
+        self.image_transform = Compose([
+            ToImage(),
+            Resize((size, size), interpolation=InterpolationMode.BILINEAR),
+            ToDtype(torch.float32, scale=True),
+            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
+        self.target_transform = Compose([
+            ToImage(),
+            Resize((size, size), interpolation=InterpolationMode.NEAREST),
+            ToDtype(torch.int64),
+        ])
+
+    def __call__(self, image, target):
+        return self.image_transform(image), self.target_transform(target)
 
 
 # Mapping class IDs to train IDs
@@ -99,20 +174,9 @@ def main(args):
     # Define the device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Define the transforms to apply to the data
-    img_transform = Compose([
-    ToImage(),
-    Resize((patch_nr*patch_size, patch_nr*patch_size), interpolation=InterpolationMode.BILINEAR),
-    ToDtype(torch.float32, scale=True),
-    Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
-
-    # Target transform (mask)
-    target_transform = Compose([
-        ToImage(),
-        Resize((patch_nr*patch_size, patch_nr*patch_size), interpolation=InterpolationMode.NEAREST),
-        ToDtype(torch.int64),  # no scaling
-    ])
+    image_size = patch_nr * patch_size
+    train_transforms = SegmentationTrainTransforms(size=image_size)
+    eval_transforms = SegmentationEvalTransforms(size=image_size)
 
     # Load the dataset and make a split for training and validation
     train_dataset = Cityscapes(
@@ -120,8 +184,7 @@ def main(args):
     split="train",
     mode="fine",
     target_type="semantic",
-    transform=img_transform,
-    target_transform=target_transform,
+    transforms=train_transforms,
     )
 
     valid_dataset = Cityscapes(
@@ -129,8 +192,7 @@ def main(args):
         split="val",
         mode="fine",
         target_type="semantic",
-        transform=img_transform,
-        target_transform=target_transform,
+        transforms=eval_transforms,
     )
 
     train_dataloader = DataLoader(
