@@ -11,7 +11,7 @@ class Model(nn.Module):
     EMBED_DIM = 768
     PATCH_SIZE = 16
     RESOLUTION = 512
-    PRETRAINED_BACKBONE_WEIGHTS = "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
+    PRETRAINED_BACKBONE_WEIGHTS = "dinov3_vitl16_pretrained_weights.pth"
     BACKBONE_REPO = "dinov3"
 
     def __init__(
@@ -20,7 +20,7 @@ class Model(nn.Module):
         n_classes=19,
         load_backbone_for_training=True,
         head_hidden_channels=512,
-        head_num_layers=5,
+        head_num_layers=3,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -30,7 +30,7 @@ class Model(nn.Module):
         # Build DINOv3 ViT-B/16 from local hub repo and load local checkpoint weights.
         self.backbone = torch.hub.load(
             str(self.BACKBONE_REPO),
-            "dinov3_vitb16",
+            "dinov3_vitl16",
             source="local",
             pretrained=False,
         )
