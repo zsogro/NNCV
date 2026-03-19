@@ -150,7 +150,7 @@ def main(args):
     model = Model(
         in_channels=3,  # RGB images
         n_classes=19,  # 19 classes in the Cityscapes dataset
-        load_pretrained_backbone=True 
+        load_backbone_for_training=True 
     ).to(device)
 
     # Define the loss function
