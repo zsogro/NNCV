@@ -178,3 +178,4 @@ uv.lock
 .python-version
 finetuned_model.pth
 first_vit*
+*.png

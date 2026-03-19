@@ -10,3 +10,4 @@ pyproject.toml
 local_data/
 local_output/
 *.pth
+*.pt
