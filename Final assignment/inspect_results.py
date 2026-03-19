@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 
 # Cityscapes color palette (trainId → color)
@@ -32,19 +33,17 @@ def label_to_color_image(label_img):
 
     for label, color in CITYSCAPES_COLORS.items():
         mask = label_img == label
-        color_img[mask] = color
+        color_img[mask] = color[::-1]  # Convert RGB to BGR for OpenCV
 
     return color_img
 
 import cv2
 
 
-# *****************************
-image_name = "tubingen_t"
-# *****************************
-
-
-label = cv2.imread(f"local_output/{image_name}.png", cv2.IMREAD_GRAYSCALE)
-color = label_to_color_image(label)
-cv2.imwrite(f"local_output/{image_name}_colorized.png", color)
+for images in Path("local_output").glob("*.png"):
+    print(f"Processing {images}...")
+    label = cv2.imread(str(images), cv2.IMREAD_GRAYSCALE)
+    color = label_to_color_image(label)
+    out_path = f"colorized_output/{images.stem}_colorized.png"
+    cv2.imwrite(out_path, color)
 
