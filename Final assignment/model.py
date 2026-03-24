@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from pathlib import Path
 
 from head import MLPHead
-
+from ood_model import OOD_Detector
 
 class Model(nn.Module):
 
@@ -21,12 +21,13 @@ class Model(nn.Module):
         load_backbone_for_training=True,
         head_hidden_channels=512,
         head_num_layers=3,
+        ood=False,
     ):
         super().__init__()
         self.in_channels = in_channels
         self.n_classes = n_classes
         self.load_backbone_for_training = load_backbone_for_training
-
+        self.ood = ood
         # Build DINOv3 ViT-B/16 from local hub repo and load local checkpoint weights.
         self.backbone = torch.hub.load(
             str(self.BACKBONE_REPO),
@@ -53,6 +54,8 @@ class Model(nn.Module):
             use_batchnorm=False,
             use_cls_token=False,
         )
+        if self.ood:
+            self.ood_detector = OOD_Detector()
 
     def train(self, mode: bool = True):
         super().train(mode)
@@ -113,4 +116,8 @@ class Model(nn.Module):
             align_corners=False
         )
 
-        return logits
+        if self.ood:
+            ood_score = self.ood_detector.score_tokens(patch_tokens)
+            return logits, ood_score
+        else:
+            return logits
