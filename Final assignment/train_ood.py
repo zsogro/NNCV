@@ -333,6 +333,7 @@ def main(args) -> None:
 
 
 if __name__ == "__main__":
+    print("Training Out of Ordinary detector.")
     parser = get_args_parser()
     parsed_args = parser.parse_args()
 
