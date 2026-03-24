@@ -7,7 +7,7 @@
 #SBATCH --time=3:00:00
 
 # Pull container from dockerhub
-apptainer pull container_v2.sif docker://zsogro/nncv-dinov3:v2
+apptainer pull container_v3.sif docker://zsogro/nncv-dinov3:v3
 
 # Use the huggingface-cli package inside the container to download the data
 # mkdir -p data

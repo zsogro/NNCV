@@ -7,4 +7,4 @@ python3 train.py \
     --lr 0.001 \
     --num-workers 10 \
     --seed 42 \
-    --experiment-id "dinov3_b16_mlp_5_res_512" \
+    --experiment-id "dinov3_l16_mlp3_res512_aug" \
