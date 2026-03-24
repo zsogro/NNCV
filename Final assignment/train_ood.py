@@ -52,7 +52,8 @@ class OODTrainTransforms:
         )
 
     def __call__(self, image, target):
-        return self.image_transform(image), target
+        # Return a dummy tensor target to keep DataLoader collation valid.
+        return self.image_transform(image), torch.tensor(0, dtype=torch.int64)
 
 
 class OODevalTransforms:
@@ -70,7 +71,8 @@ class OODevalTransforms:
         )
 
     def __call__(self, image, target):
-        return self.image_transform(image), target
+        # Return a dummy tensor target to keep DataLoader collation valid.
+        return self.image_transform(image), torch.tensor(0, dtype=torch.int64)
 
 
 def get_args_parser() -> ArgumentParser:
