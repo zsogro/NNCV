@@ -26,7 +26,7 @@ WORKDIR /app
 COPY predict.py /app/predict.py
 COPY dinov3 /app/dinov3
 COPY head.py /app/head.py
-COPY model_vit_b16_mlp_512.pt /app/model.pt
+COPY model_l16_mlp3.pt /app/model.pt
 COPY model.py /app/model.py
 
 ENTRYPOINT ["python", "/app/predict.py"]
