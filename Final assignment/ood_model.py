@@ -1,0 +1,150 @@
+import torch
+import torch.nn as nn
+import normflows as nf
+
+
+class OOD_Detector(nn.Module):
+	"""Normalizing-flow based OOD detector operating on DINOv3 token features.
+
+	Expected token input shape is ``[B, T, D]`` where:
+	- ``B``: batch size
+	- ``T``: number of tokens (patch tokens, or patch+CLS if desired)
+	- ``D``: token embedding size from DINOv3 backbone
+	"""
+
+	def __init__(
+		self,
+		token_dim: int,
+		flow_dim: int = 128,
+		hidden_dim: int = 256,
+		num_flow_layers: int = 8,
+		token_sample_size: int | None = 4096,
+	):
+		super().__init__()
+		if token_dim <= 0:
+			raise ValueError("token_dim must be > 0")
+		if flow_dim <= 1:
+			raise ValueError("flow_dim must be > 1")
+		if hidden_dim <= 0:
+			raise ValueError("hidden_dim must be > 0")
+		if num_flow_layers <= 0:
+			raise ValueError("num_flow_layers must be > 0")
+
+		self.token_dim = token_dim
+		self.flow_dim = flow_dim
+		self.hidden_dim = hidden_dim
+		self.num_flow_layers = num_flow_layers
+		self.token_sample_size = token_sample_size
+
+		# Lightweight projection from high-dimensional DINO tokens to flow space.
+		self.token_projector = nn.Sequential(
+			nn.LayerNorm(self.token_dim),
+			nn.Linear(self.token_dim, self.hidden_dim),
+			nn.GELU(),
+			nn.Linear(self.hidden_dim, self.flow_dim),
+		)
+
+		self.nf_model = self._build_flow()
+		self.threshold: float | None = None
+
+	def _build_flow(self) -> nf.NormalizingFlow:
+		base = nf.distributions.base.DiagGaussian(self.flow_dim)
+		flows = []
+
+		for layer_idx in range(self.num_flow_layers):
+			mask = self._alternating_mask(self.flow_dim, invert=(layer_idx % 2 == 1))
+			t_net = nf.nets.MLP(
+				[self.flow_dim, self.hidden_dim, self.hidden_dim, self.flow_dim],
+				init_zeros=True,
+			)
+			s_net = nf.nets.MLP(
+				[self.flow_dim, self.hidden_dim, self.hidden_dim, self.flow_dim],
+				init_zeros=True,
+				output_fn="tanh",
+				output_scale=2.0,
+			)
+			flows.append(nf.flows.MaskedAffineFlow(mask, t=t_net, s=s_net))
+
+		return nf.NormalizingFlow(base, flows)
+
+	@staticmethod
+	def _alternating_mask(dim: int, invert: bool = False) -> torch.Tensor:
+		mask = torch.arange(dim) % 2
+		if invert:
+			mask = 1 - mask
+		return mask.float()
+
+	def _check_tokens(self, tokens: torch.Tensor) -> None:
+		if tokens.dim() != 3:
+			raise ValueError(
+				f"Expected tokens with shape [B, T, D], got tensor with shape {tuple(tokens.shape)}"
+			)
+		if tokens.size(-1) != self.token_dim:
+			raise ValueError(
+				f"Expected token_dim={self.token_dim}, but got D={tokens.size(-1)}"
+			)
+
+	def _project_tokens(self, tokens: torch.Tensor) -> torch.Tensor:
+		self._check_tokens(tokens)
+		flat_tokens = tokens.reshape(-1, self.token_dim)
+		return self.token_projector(flat_tokens)
+
+	def _sample_tokens(self, projected_tokens: torch.Tensor) -> torch.Tensor:
+		if self.token_sample_size is None or projected_tokens.size(0) <= self.token_sample_size:
+			return projected_tokens
+
+		indices = torch.randperm(projected_tokens.size(0), device=projected_tokens.device)[
+			: self.token_sample_size
+		]
+		return projected_tokens[indices]
+
+	def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+		"""Return OOD score per image (higher means more likely OOD)."""
+		token_scores = self.score_tokens(tokens)
+		return token_scores.mean(dim=1)
+
+	def loss(self, tokens: torch.Tensor) -> torch.Tensor:
+		"""Negative log-likelihood loss for training on in-distribution tokens."""
+		projected_tokens = self._project_tokens(tokens)
+		sampled_tokens = self._sample_tokens(projected_tokens)
+		return self.nf_model.forward_kld(sampled_tokens)
+
+	def score_tokens(self, tokens: torch.Tensor) -> torch.Tensor:
+		"""Return token-level OOD scores of shape [B, T]."""
+		self._check_tokens(tokens)
+		bsz, n_tokens, _ = tokens.shape
+		projected_tokens = self._project_tokens(tokens)
+		log_prob = self.nf_model.log_prob(projected_tokens)
+		ood_score = -log_prob
+		return ood_score.view(bsz, n_tokens)
+
+	@torch.no_grad()
+	def calibrate_threshold(self, id_tokens: torch.Tensor, quantile: float = 0.95) -> float:
+		"""Set threshold from ID data using image-level OOD score quantile."""
+		if not 0.0 < quantile < 1.0:
+			raise ValueError("quantile must be in (0, 1)")
+
+		scores = self.forward(id_tokens)
+		threshold = torch.quantile(scores, quantile).item()
+		self.threshold = float(threshold)
+		return self.threshold
+
+	@torch.no_grad()
+	def predict_ood(
+		self,
+		tokens: torch.Tensor,
+		threshold: float | None = None,
+	) -> tuple[torch.Tensor, torch.Tensor]:
+		"""Return OOD boolean mask and image-level OOD scores.
+
+		Outputs:
+		- ``is_ood`` with shape ``[B]``
+		- ``scores`` with shape ``[B]``
+		"""
+		use_threshold = self.threshold if threshold is None else threshold
+		if use_threshold is None:
+			raise ValueError("No threshold provided. Call calibrate_threshold or pass threshold.")
+
+		scores = self.forward(tokens)
+		is_ood = scores > use_threshold
+		return is_ood, scores
