@@ -20,13 +20,15 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir \
     torch torchvision --index-url https://download.pytorch.org/whl/cu126
 RUN pip install --no-cache-dir \
-    pillow torchmetrics termcolor 
+    pillow torchmetrics termcolor normflows
 
 WORKDIR /app
-COPY predict.py /app/predict.py
+COPY predict_ood.py /app/predict.py
 COPY dinov3 /app/dinov3
 COPY head.py /app/head.py
+COPY ood_model.py /app/ood_model.py
 COPY model_l16_mlp3.pt /app/model.pt
+COPY ood_detector_weights.pt /app/ood_detector_weights.pt
 COPY model.py /app/model.py
 
 ENTRYPOINT ["python", "/app/predict.py"]
