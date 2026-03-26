@@ -21,7 +21,7 @@ class Model(nn.Module):
         n_classes=19,
         load_backbone_for_training=True,
         head_hidden_channels=512,
-        head_num_layers=3,
+        head_num_layers=5,
         ood=False,
         ood_threshold=0.95,
     ):

@@ -230,10 +230,8 @@ def main(args):
         lr=args.lr,
     )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs
-    )
+    lmbda = lambda epoch: 0.9
+    scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
 
     # Training loop
     best_valid_loss = float('inf')
@@ -312,7 +310,8 @@ def main(args):
                 )
                 torch.save(model.state_dict(), current_best_model_path)
 
-        scheduler.step()
+        if epoch > 30:
+            scheduler.step()
         
     print("Training complete!")
 
