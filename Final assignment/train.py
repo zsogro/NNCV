@@ -49,7 +49,7 @@ class SegmentationTrainTransforms:
             std=(0.229, 0.224, 0.225),
         )
         self.color_jitter = ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05)
-        self.hflip = RandomHorizontalFlip(p=1.0)
+        self.hflip = RandomHorizontalFlip(p=1.0)  # We will apply horizontal flip with 50% probability in __call__
 
     def __call__(self, image, target):
         image = self.to_image(image)
