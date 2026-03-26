@@ -13,6 +13,7 @@ class Model(nn.Module):
     RESOLUTION = 512
     PRETRAINED_BACKBONE_WEIGHTS = "dinov3_vitl16_pretrained_weights.pth"
     BACKBONE_REPO = "dinov3"
+    OOD_DETECTOR_WEIGHTS = "ood_detector_weights.pt"
 
     def __init__(
         self,
@@ -22,13 +23,15 @@ class Model(nn.Module):
         head_hidden_channels=512,
         head_num_layers=3,
         ood=False,
+        ood_threshold=0.95,
     ):
         super().__init__()
         self.in_channels = in_channels
         self.n_classes = n_classes
         self.load_backbone_for_training = load_backbone_for_training
         self.ood = ood
-        # Build DINOv3 ViT-B/16 from local hub repo and load local checkpoint weights.
+        self.ood_threshold = ood_threshold
+        # Build DINOv3 ViT from local hub repo and load local checkpoint weights.
         self.backbone = torch.hub.load(
             str(self.BACKBONE_REPO),
             "dinov3_vitl16",
@@ -38,7 +41,7 @@ class Model(nn.Module):
         if self.load_backbone_for_training:
             self._load_backbone_weights(self.PRETRAINED_BACKBONE_WEIGHTS)
 
-        # ViT-B/16 embedding size
+        # ViT embedding size
         self.embed_dim = self.EMBED_DIM
         self.patch_size = self.PATCH_SIZE
 
@@ -55,7 +58,14 @@ class Model(nn.Module):
             use_cls_token=False,
         )
         if self.ood:
-            self.ood_detector = OOD_Detector()
+            self.ood_detector = OOD_Detector(
+                token_dim=self.embed_dim,
+                flow_dim=128,
+                hidden_dim=256,
+                num_flow_layers=8,
+                token_sample_size=4096,
+            )
+            self._load_ood_detector_weights(self.OOD_DETECTOR_WEIGHTS)
 
     def train(self, mode: bool = True):
         super().train(mode)
@@ -63,6 +73,7 @@ class Model(nn.Module):
         return self
 
     def _load_backbone_weights(self, weights_path):
+        print(f"Loading backbone weights from {weights_path}...")
         checkpoint_path = weights_path
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
         state_dict = checkpoint
@@ -76,6 +87,71 @@ class Model(nn.Module):
             raise TypeError("Checkpoint does not contain a valid state_dict")
 
         self.backbone.load_state_dict(state_dict, strict=True)
+
+    def _load_ood_detector_weights(self, weights_path):
+        print(f"Loading OOD detector weights from {weights_path}...")
+        if not hasattr(self, 'ood_detector') or self.ood_detector is None:
+            raise RuntimeError("OOD detector not initialized. Set ood=True first.")
+        
+        checkpoint = torch.load(weights_path, map_location="cpu")
+        state_dict = checkpoint
+        if isinstance(checkpoint, dict):
+            if "detector_state_dict" in checkpoint and isinstance(checkpoint["detector_state_dict"], dict):
+                state_dict = checkpoint["detector_state_dict"]
+            elif "state_dict" in checkpoint and isinstance(checkpoint["state_dict"], dict):
+                state_dict = checkpoint["state_dict"]
+            elif "model" in checkpoint and isinstance(checkpoint["model"], dict):
+                state_dict = checkpoint["model"]
+
+        if not isinstance(state_dict, dict):
+            raise TypeError("Checkpoint does not contain a valid state_dict")
+
+        # Remove "ood_detector." prefix from keys if present
+        new_state_dict = {}
+        for key, value in state_dict.items():
+            if key.startswith("ood_detector."):
+                new_key = key.replace("ood_detector.", "", 1)
+                new_state_dict[new_key] = value
+            else:
+                new_state_dict[key] = value
+        
+        self.ood_detector.load_state_dict(new_state_dict, strict=True)
+        if isinstance(checkpoint, dict):
+            threshold = checkpoint.get("threshold")
+            if threshold is not None:
+                self.ood_detector.threshold = float(threshold)
+
+            id_score_mean = checkpoint.get("id_score_mean")
+            id_score_std = checkpoint.get("id_score_std")
+            if id_score_mean is not None and id_score_std is not None:
+                if float(id_score_std) > 0:
+                    self.ood_detector.set_score_calibration(
+                        mean=float(id_score_mean),
+                        std=float(id_score_std),
+                    )
+
+    def load_model_state_dict(self, checkpoint_path):
+        """Load model state dict, filtering out OOD detector keys if not in checkpoint."""
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        state_dict = checkpoint
+        
+        if isinstance(checkpoint, dict):
+            if "state_dict" in checkpoint and isinstance(checkpoint["state_dict"], dict):
+                state_dict = checkpoint["state_dict"]
+            elif "model" in checkpoint and isinstance(checkpoint["model"], dict):
+                state_dict = checkpoint["model"]
+        
+        # Filter out OOD detector keys if OOD is not enabled or keys don't exist
+        filtered_state_dict = {}
+        for key, value in state_dict.items():
+            if key.startswith("ood_detector."):
+                if self.ood:
+                    filtered_state_dict[key] = value
+                # Skip OOD keys if OOD is disabled
+            else:
+                filtered_state_dict[key] = value
+        
+        self.load_state_dict(filtered_state_dict, strict=False)
 
     def _forward_backbone_patch_tokens(self, x):
         features = self.backbone.forward_features(x)
@@ -117,7 +193,12 @@ class Model(nn.Module):
         )
 
         if self.ood:
-            ood_score = self.ood_detector.score_tokens(patch_tokens)
-            return logits, ood_score
+            is_ood, _ = self.ood_detector.predict_ood(
+                patch_tokens,
+                threshold=self.ood_threshold,
+                use_probability=True,
+            )
+            print(f"OOD decision: {is_ood.item()} (threshold={self.ood_threshold})")
+            return logits, is_ood
         else:
             return logits

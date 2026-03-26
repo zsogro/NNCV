@@ -46,6 +46,8 @@ class OOD_Detector(nn.Module):
 
 		self.nf_model = self._build_flow()
 		self.threshold: float | None = None
+		self.id_score_mean: float | None = None
+		self.id_score_std: float | None = None
 
 	def _build_flow(self) -> nf.NormalizingFlow:
 		base = nf.distributions.base.DiagGaussian(self.flow_dim)
@@ -125,26 +127,55 @@ class OOD_Detector(nn.Module):
 			raise ValueError("quantile must be in (0, 1)")
 
 		scores = self.forward(id_tokens)
+		self.id_score_mean = float(scores.mean().item())
+		self.id_score_std = float(scores.std(unbiased=False).clamp_min(1e-6).item())
 		threshold = torch.quantile(scores, quantile).item()
 		self.threshold = float(threshold)
 		return self.threshold
+
+	def set_score_calibration(self, mean: float, std: float) -> None:
+		"""Set score distribution statistics used for probability conversion."""
+		if std <= 0:
+			raise ValueError("std must be > 0")
+		self.id_score_mean = float(mean)
+		self.id_score_std = float(std)
+
+	def score_to_probability(self, scores: torch.Tensor) -> torch.Tensor:
+		"""Map raw OOD scores to [0, 1] using calibrated ID score statistics.
+
+		Interpretation: approximately the ID-score percentile under a Gaussian fit.
+		Higher values mean more likely OOD.
+		"""
+		if self.id_score_mean is None or self.id_score_std is None:
+			if self.threshold is None:
+				raise ValueError(
+					"Score calibration not set. Provide id_score_mean/id_score_std or a threshold."
+				)
+			# Fallback for older checkpoints: centered sigmoid around threshold.
+			temperature = max(abs(float(self.threshold)) * 0.1, 1.0)
+			return torch.sigmoid((scores - float(self.threshold)) / temperature)
+
+		z = (scores - self.id_score_mean) / max(self.id_score_std, 1e-6)
+		return 0.5 * (1.0 + torch.erf(z / 1.4142135623730951))
 
 	@torch.no_grad()
 	def predict_ood(
 		self,
 		tokens: torch.Tensor,
 		threshold: float | None = None,
+		use_probability: bool = False,
 	) -> tuple[torch.Tensor, torch.Tensor]:
 		"""Return OOD boolean mask and image-level OOD scores.
 
 		Outputs:
 		- ``is_ood`` with shape ``[B]``
-		- ``scores`` with shape ``[B]``
+		- ``scores`` with shape ``[B]`` (raw scores or probabilities)
 		"""
 		use_threshold = self.threshold if threshold is None else threshold
 		if use_threshold is None:
 			raise ValueError("No threshold provided. Call calibrate_threshold or pass threshold.")
 
-		scores = self.forward(tokens)
+		raw_scores = self.forward(tokens)
+		scores = self.score_to_probability(raw_scores) if use_probability else raw_scores
 		is_ood = scores > use_threshold
 		return is_ood, scores

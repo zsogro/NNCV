@@ -32,8 +32,9 @@ IMAGE_DIR = "/data"
 OUTPUT_DIR = "/output"
 MODEL_PATH = "/app/model.pt"
 
-PATCH_SIZE = Model.PATCH_SIZE  # ViT-S patch size, used for postprocessing to ensure correct resizing of output masks
+PATCH_SIZE = Model.PATCH_SIZE 
 PATCH_NR = Model.RESOLUTION // PATCH_SIZE  # Number of patches along one dimension, used for postprocessing to ensure correct resizing of output masks
+
 def preprocess(img: Image.Image) -> torch.Tensor:
     # Implement your preprocessing steps here
     # For example, resizing, normalization, etc.

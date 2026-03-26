@@ -147,12 +147,16 @@ def _save_checkpoint(
     train_loss: float,
     valid_loss: float,
     threshold: float,
+    id_score_mean: float,
+    id_score_std: float,
 ) -> None:
     payload = {
         "epoch": epoch,
         "train_loss": train_loss,
         "valid_loss": valid_loss,
         "threshold": threshold,
+        "id_score_mean": id_score_mean,
+        "id_score_std": id_score_std,
         "detector_state_dict": detector.state_dict(),
         "detector_config": {
             "token_dim": detector.token_dim,
@@ -276,8 +280,11 @@ def main(args) -> None:
         valid_loss = sum(valid_losses) / max(len(valid_losses), 1)
 
         score_tensor = torch.cat(valid_scores, dim=0)
+        id_score_mean = float(score_tensor.mean().item())
+        id_score_std = float(score_tensor.std(unbiased=False).clamp_min(1e-6).item())
         threshold = float(torch.quantile(score_tensor, args.threshold_quantile).item())
         detector.threshold = threshold
+        detector.set_score_calibration(mean=id_score_mean, std=id_score_std)
 
         if not args.disable_wandb:
             wandb.log(
@@ -311,6 +318,8 @@ def main(args) -> None:
                 train_loss=train_loss,
                 valid_loss=valid_loss,
                 threshold=threshold,
+                id_score_mean=id_score_mean,
+                id_score_std=id_score_std,
             )
 
     final_path = os.path.join(output_dir, "final_ood_detector.pt")
@@ -322,6 +331,8 @@ def main(args) -> None:
         train_loss=train_loss,
         valid_loss=valid_loss,
         threshold=detector.threshold if detector.threshold is not None else float("nan"),
+        id_score_mean=detector.id_score_mean if detector.id_score_mean is not None else float("nan"),
+        id_score_std=detector.id_score_std if detector.id_score_std is not None else float("nan"),
     )
 
     print(f"Training complete. Final checkpoint: {final_path}")

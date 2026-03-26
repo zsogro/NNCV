@@ -34,6 +34,8 @@ IMAGE_DIR = "/data"
 OUTPUT_DIR = "/output"
 MODEL_PATH = "/app/model.pt"
 
+PATCH_SIZE = Model.PATCH_SIZE 
+PATCH_NR = Model.RESOLUTION // PATCH_SIZE
 
 def preprocess(img: Image.Image) -> torch.Tensor:
     # Implement your preprocessing steps here
@@ -41,9 +43,12 @@ def preprocess(img: Image.Image) -> torch.Tensor:
     # Return a tensor suitable for model input
     transform = Compose([
         ToImage(),
-        Resize(size=(256, 256), interpolation=InterpolationMode.BILINEAR),
+        Resize(size=(PATCH_NR*PATCH_SIZE, PATCH_NR*PATCH_SIZE), interpolation=InterpolationMode.BILINEAR),
         ToDtype(dtype=torch.float32, scale=True),
-        Normalize(mean=(0.5,), std=(0.5,)),
+        Normalize(
+                mean=(0.485, 0.456, 0.406),
+                std=(0.229, 0.224, 0.225),
+            ),
     ])
 
     img = transform(img)
@@ -68,9 +73,9 @@ def postprocess(pred: torch.Tensor, original_shape: tuple) -> np.ndarray:
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Load model
-    model = Model()
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    # Load model with OOD detection enabled
+    model = Model(load_backbone_for_training=False, ood=True)
+    model.load_model_state_dict(MODEL_PATH)
     model.eval().to(device)
 
     image_files = list(Path(IMAGE_DIR).glob("**/*.png"))
@@ -112,6 +117,8 @@ def main():
                 'image_name': str(relative_path).replace('\\', '/'),
                 'include': bool(include_decision)
             })
+
+            print(f"Processed {img_path.name}: OOD: {bool(include_decision)}")
 
     # Write predictions to CSV
     with open(csv_path, 'w', newline='') as f:
