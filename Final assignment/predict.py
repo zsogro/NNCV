@@ -91,7 +91,8 @@ def main():
 
     with torch.no_grad():
         for img_path in image_files:
-            img = Image.open(img_path)
+            # Ensure consistent 3-channel input even if source PNG is grayscale.
+            img = Image.open(img_path).convert("RGB")
             original_shape = np.array(img).shape[:2]
 
             # Preprocess

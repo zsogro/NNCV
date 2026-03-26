@@ -193,12 +193,10 @@ class Model(nn.Module):
         )
 
         if self.ood:
-            is_ood, _ = self.ood_detector.predict_ood(
+            is_ood, probability = self.ood_detector.predict_ood(
                 patch_tokens,
                 threshold=self.ood_threshold,
-                use_probability=True,
             )
-            print(f"OOD decision: {is_ood.item()} (threshold={self.ood_threshold})")
-            return logits, is_ood
+            return logits, is_ood, probability
         else:
             return logits

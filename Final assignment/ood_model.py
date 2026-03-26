@@ -50,7 +50,7 @@ class OOD_Detector(nn.Module):
 		self.id_score_std: float | None = None
 
 	def _build_flow(self) -> nf.NormalizingFlow:
-		base = nf.distributions.base.DiagGaussian(self.flow_dim)
+		base = nf.distributions.base.DiagGaussian(self.flow_dim) # Simple isotropic Gaussian base distribution in flow space (latent space)
 		flows = []
 
 		for layer_idx in range(self.num_flow_layers):
@@ -146,15 +146,6 @@ class OOD_Detector(nn.Module):
 		Interpretation: approximately the ID-score percentile under a Gaussian fit.
 		Higher values mean more likely OOD.
 		"""
-		if self.id_score_mean is None or self.id_score_std is None:
-			if self.threshold is None:
-				raise ValueError(
-					"Score calibration not set. Provide id_score_mean/id_score_std or a threshold."
-				)
-			# Fallback for older checkpoints: centered sigmoid around threshold.
-			temperature = max(abs(float(self.threshold)) * 0.1, 1.0)
-			return torch.sigmoid((scores - float(self.threshold)) / temperature)
-
 		z = (scores - self.id_score_mean) / max(self.id_score_std, 1e-6)
 		return 0.5 * (1.0 + torch.erf(z / 1.4142135623730951))
 
@@ -163,7 +154,6 @@ class OOD_Detector(nn.Module):
 		self,
 		tokens: torch.Tensor,
 		threshold: float | None = None,
-		use_probability: bool = False,
 	) -> tuple[torch.Tensor, torch.Tensor]:
 		"""Return OOD boolean mask and image-level OOD scores.
 
@@ -176,6 +166,6 @@ class OOD_Detector(nn.Module):
 			raise ValueError("No threshold provided. Call calibrate_threshold or pass threshold.")
 
 		raw_scores = self.forward(tokens)
-		scores = self.score_to_probability(raw_scores) if use_probability else raw_scores
-		is_ood = scores > use_threshold
-		return is_ood, scores
+		prob = self.score_to_probability(raw_scores)
+		is_ood = prob > use_threshold
+		return is_ood, prob

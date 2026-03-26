@@ -99,7 +99,6 @@ def plot_all_pairs_grid(folder_path, cols=2):
 
 def colorize_images():
     for images in Path("local_output").glob("*.png"):
-        print(f"Processing {images}...")
         label = cv2.imread(str(images), cv2.IMREAD_GRAYSCALE)
         color = label_to_color_image(label)
         out_path = f"colorized_output/{images.stem}_colorized.png"

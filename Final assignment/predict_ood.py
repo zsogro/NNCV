@@ -91,14 +91,14 @@ def main():
 
     with torch.no_grad():
         for img_path in image_files:
-            img = Image.open(img_path)
+            img = Image.open(img_path).convert("RGB")
             original_shape = np.array(img).shape[:2]
 
             # Preprocess
             img_tensor = preprocess(img).to(device)
 
             # Forward pass - model should return segmentation and inclusion decision
-            seg_pred, include_decision = model(img_tensor)
+            seg_pred, include_decision, probability = model(img_tensor)
 
             # Postprocess to segmentation mask
             seg_pred = postprocess(seg_pred, original_shape)
@@ -115,10 +115,10 @@ def main():
             # Record prediction
             predictions.append({
                 'image_name': str(relative_path).replace('\\', '/'),
-                'include': bool(include_decision)
+                'include': bool(include_decision),
             })
 
-            print(f"Processed {img_path.name}: OOD: {bool(include_decision)}")
+            print(f"[{img_path.name}] p={float(probability):.2f}: ", "OOD" if bool(include_decision) else "ID")
 
     # Write predictions to CSV
     with open(csv_path, 'w', newline='') as f:
