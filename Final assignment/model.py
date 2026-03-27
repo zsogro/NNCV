@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 
-from head import MLPHead
+from head import MLPHead, AllMLPDecoder
 from ood_model import OOD_Detector
 
 class Model(nn.Module):
@@ -22,6 +22,8 @@ class Model(nn.Module):
         load_backbone_for_training=True,
         head_hidden_channels=512,
         head_num_layers=3,
+        use_multidepth_decoder=False,
+        multidepth_feature_levels=4,
         ood=False,
         ood_threshold=0.95,
     ):
@@ -31,6 +33,8 @@ class Model(nn.Module):
         self.load_backbone_for_training = load_backbone_for_training
         self.head_num_layers = head_num_layers
         self.head_hidden_channels = head_hidden_channels
+        self.use_multidepth_decoder = use_multidepth_decoder
+        self.multidepth_feature_levels = multidepth_feature_levels
         self.ood = ood
         self.ood_threshold = ood_threshold
         # Build DINOv3 ViT from local hub repo and load local checkpoint weights.
@@ -51,14 +55,26 @@ class Model(nn.Module):
             parameter.requires_grad = False
         self.backbone.eval()
 
-        self.seg_head = MLPHead(
-            in_channels=[self.embed_dim],
-            n_output_channels=self.n_classes,
-            hidden_channels=self.head_hidden_channels,
-            num_layers=self.head_num_layers,
-            use_batchnorm=False,
-            use_cls_token=False,
-        )
+        if self.use_multidepth_decoder:
+            self.multidepth_indices = self._build_multidepth_indices(self.multidepth_feature_levels)
+            self.seg_head = AllMLPDecoder(
+                in_channels=[self.embed_dim] * len(self.multidepth_indices),
+                n_output_channels=self.n_classes,
+                embed_channels=256,
+                hidden_channels=self.head_hidden_channels,
+                num_fuse_layers=self.head_num_layers,
+                use_batchnorm=False,
+            )
+        else:
+            self.multidepth_indices = None
+            self.seg_head = MLPHead(
+                in_channels=[self.embed_dim],
+                n_output_channels=self.n_classes,
+                hidden_channels=self.head_hidden_channels,
+                num_layers=self.head_num_layers,
+                use_batchnorm=False,
+                use_cls_token=False,
+            )
         if self.ood:
             self.ood_detector = OOD_Detector(
                 token_dim=self.embed_dim,
@@ -159,6 +175,33 @@ class Model(nn.Module):
         features = self.backbone.forward_features(x)
         return features["x_norm_patchtokens"]
 
+    def _build_multidepth_indices(self, num_levels: int) -> list[int]:
+        if num_levels < 2:
+            raise ValueError("multidepth_feature_levels must be >= 2")
+        total_blocks = len(self.backbone.blocks)
+        if num_levels > total_blocks:
+            raise ValueError(
+                f"multidepth_feature_levels={num_levels} exceeds backbone depth={total_blocks}"
+            )
+
+        indices = []
+        for i in range(num_levels):
+            idx = int((i + 1) * total_blocks / num_levels) - 1
+            indices.append(max(idx, 0))
+        return sorted(set(indices))
+
+    def _forward_backbone_multidepth_maps(self, x):
+        if self.multidepth_indices is None:
+            raise RuntimeError("Multi-depth decoder not enabled")
+        return list(
+            self.backbone.get_intermediate_layers(
+                x,
+                n=self.multidepth_indices,
+                reshape=True,
+                norm=True,
+            )
+        )
+
     def forward(self, x):
 
         # Check if the input tensor has the expected number of channels
@@ -168,7 +211,12 @@ class Model(nn.Module):
 
         # Extract patch tokens
         with torch.no_grad():
-            patch_tokens = self._forward_backbone_patch_tokens(x)
+            if self.use_multidepth_decoder:
+                multi_feats = self._forward_backbone_multidepth_maps(x)
+                last_feat = multi_feats[-1]
+                patch_tokens = last_feat.flatten(2).transpose(1, 2)
+            else:
+                patch_tokens = self._forward_backbone_patch_tokens(x)
 
         # Convert tokens -> feature map
         n_patches = patch_tokens.shape[1]
@@ -179,12 +227,14 @@ class Model(nn.Module):
                 f"Expected {patch_height * patch_width} patch tokens for input size {(H, W)}, got {n_patches}"
             )
 
-        feat_map = patch_tokens.permute(0, 2, 1).reshape(
-            B, self.embed_dim, patch_height, patch_width
-        )
-
-        # Segmentation head
-        logits = self.seg_head([feat_map])
+        if self.use_multidepth_decoder:
+            # Segmentation head with multi-depth backbone features.
+            logits = self.seg_head(multi_feats)
+        else:
+            feat_map = patch_tokens.permute(0, 2, 1).reshape(
+                B, self.embed_dim, patch_height, patch_width
+            )
+            logits = self.seg_head([feat_map])
 
         # Upsample to original resolution
         logits = F.interpolate(

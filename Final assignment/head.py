@@ -209,3 +209,88 @@ class MLPHead(nn.Module):
         x = self.out_conv(x)
         x = F.interpolate(input=x, size=rescale_to, mode="bilinear")
         return x
+
+
+class AllMLPDecoder(nn.Module):
+    """Lightweight all-MLP decoder for multi-depth feature fusion.
+
+    Each depth feature is projected with a 1x1 MLP-style block, then all
+    projected maps are concatenated and fused with another 1x1 MLP.
+    """
+
+    def __init__(
+        self,
+        in_channels,
+        n_output_channels,
+        embed_channels=256,
+        hidden_channels=256,
+        num_fuse_layers=2,
+        use_batchnorm=False,
+        dropout=0.1,
+    ):
+        super().__init__()
+        if len(in_channels) < 2:
+            raise ValueError("AllMLPDecoder expects at least 2 input feature levels")
+        if num_fuse_layers < 1:
+            raise ValueError("num_fuse_layers must be >= 1")
+
+        self.in_channels = in_channels
+        self.n_output_channels = n_output_channels
+        self.embed_channels = embed_channels
+        self.hidden_channels = hidden_channels
+
+        self.level_mlps = nn.ModuleList()
+        for in_ch in in_channels:
+            layers = [nn.Conv2d(in_ch, embed_channels, kernel_size=1, stride=1, padding=0)]
+            if use_batchnorm:
+                layers.append(nn.SyncBatchNorm(embed_channels))
+            layers.append(nn.GELU())
+            self.level_mlps.append(nn.Sequential(*layers))
+
+        fused_in = embed_channels * len(in_channels)
+        fuse_layers = []
+        in_dim = fused_in
+        for _ in range(num_fuse_layers - 1):
+            fuse_layers.append(nn.Conv2d(in_dim, hidden_channels, kernel_size=1, stride=1, padding=0))
+            if use_batchnorm:
+                fuse_layers.append(nn.SyncBatchNorm(hidden_channels))
+            fuse_layers.append(nn.GELU())
+            in_dim = hidden_channels
+        self.fuse_mlp = nn.Sequential(*fuse_layers)
+
+        self.dropout = nn.Dropout2d(dropout)
+        self.out_conv = nn.Conv2d(in_dim, n_output_channels, kernel_size=1, stride=1, padding=0)
+
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.normal_(module.weight, mean=0, std=0.01)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+    def _fuse(self, inputs):
+        inputs = list(inputs)
+        if len(inputs) != len(self.level_mlps):
+            raise ValueError(
+                f"Expected {len(self.level_mlps)} input feature maps, got {len(inputs)}"
+            )
+
+        target_size = inputs[0].shape[2:]
+        projected = []
+        for feat, mlp in zip(inputs, self.level_mlps):
+            x = mlp(feat)
+            if x.shape[2:] != target_size:
+                x = F.interpolate(x, size=target_size, mode="bilinear", align_corners=False)
+            projected.append(x)
+
+        x = torch.cat(projected, dim=1)
+        x = self.fuse_mlp(x)
+        x = self.dropout(x)
+        return self.out_conv(x)
+
+    def forward(self, inputs):
+        return self._fuse(inputs)
+
+    def predict(self, x, rescale_to=(512, 512)):
+        x = self._fuse(x)
+        x = F.interpolate(input=x, size=rescale_to, mode="bilinear", align_corners=False)
+        return x
