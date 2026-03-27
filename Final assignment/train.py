@@ -17,7 +17,7 @@ from argparse import ArgumentParser
 
 import wandb
 import torch
-import torch.nn as nn
+import torch.nn.functional as Fnn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torchvision.datasets import Cityscapes
@@ -36,6 +36,50 @@ from torchvision.transforms.v2 import (
 from torchvision.transforms.v2 import functional as F
 
 from model import Model
+
+
+def boundary_weighted_cross_entropy(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    ignore_index: int = 255,
+    boundary_weight: float = 4.0,
+    boundary_kernel_size: int = 5,
+) -> torch.Tensor:
+    """Cross-entropy with higher weight on class boundaries.
+
+    Boundary pixels are detected with a local max/min label disagreement test.
+    """
+    if boundary_kernel_size % 2 == 0:
+        raise ValueError("boundary_kernel_size must be odd")
+    if boundary_weight < 1.0:
+        raise ValueError("boundary_weight must be >= 1.0")
+
+    # Per-pixel CE to apply custom spatial weights.
+    ce_loss = Fnn.cross_entropy(
+        logits,
+        targets,
+        ignore_index=ignore_index,
+        reduction="none",
+    )
+
+    valid_mask = (targets != ignore_index)
+    safe_targets = targets.clone()
+    safe_targets[~valid_mask] = 0
+
+    label_map = safe_targets.unsqueeze(1).float()
+    pad = boundary_kernel_size // 2
+    local_max = Fnn.max_pool2d(label_map, kernel_size=boundary_kernel_size, stride=1, padding=pad)
+    local_min = -Fnn.max_pool2d(-label_map, kernel_size=boundary_kernel_size, stride=1, padding=pad)
+
+    boundary_mask = (local_max != local_min).squeeze(1) & valid_mask
+    pixel_weights = torch.ones_like(ce_loss)
+    pixel_weights[boundary_mask] = boundary_weight
+
+    weighted_loss = ce_loss * pixel_weights
+    weighted_loss = weighted_loss * valid_mask.float()
+
+    normalizer = valid_mask.float().sum().clamp_min(1.0)
+    return weighted_loss.sum() / normalizer
 
 
 class SegmentationTrainTransforms:
@@ -221,8 +265,9 @@ def main(args):
         load_backbone_for_training=True 
     ).to(device)
 
-    # Define the loss function
-    criterion = nn.CrossEntropyLoss(ignore_index=255)  # Ignore the void class
+    # Define boundary-aware loss to emphasize class borders.
+    boundary_weight = 4.0
+    boundary_kernel_size = 5
 
     # Define the optimizer
     optimizer = AdamW(
@@ -254,7 +299,13 @@ def main(args):
 
             optimizer.zero_grad()
             outputs = model(images)
-            loss = criterion(outputs, labels)
+            loss = boundary_weighted_cross_entropy(
+                outputs,
+                labels,
+                ignore_index=255,
+                boundary_weight=boundary_weight,
+                boundary_kernel_size=boundary_kernel_size,
+            )
             loss.backward()
             optimizer.step()
 
@@ -276,7 +327,13 @@ def main(args):
                 labels = labels.long().squeeze(1)  # Remove channel dimension
 
                 outputs = model(images)
-                loss = criterion(outputs, labels)
+                loss = boundary_weighted_cross_entropy(
+                    outputs,
+                    labels,
+                    ignore_index=255,
+                    boundary_weight=boundary_weight,
+                    boundary_kernel_size=boundary_kernel_size,
+                )
                 losses.append(loss.item())
             
                 if i == 0:
