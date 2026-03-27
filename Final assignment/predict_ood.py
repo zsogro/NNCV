@@ -118,7 +118,7 @@ def main():
                 'include': bool(include_decision),
             })
 
-            print(f"[{img_path.name}] p={float(probability):.3f}: ", "OOD" if bool(include_decision) else "ID")
+            print(f"[{img_path.name}] p={float(probability):.3f}: ", "ID" if bool(include_decision) else "OOD")
 
     # Write predictions to CSV
     with open(csv_path, 'w', newline='') as f:

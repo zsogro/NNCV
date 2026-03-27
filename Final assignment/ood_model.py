@@ -158,7 +158,7 @@ class OOD_Detector(nn.Module):
 		"""Return OOD boolean mask and image-level OOD scores.
 
 		Outputs:
-		- ``is_ood`` with shape ``[B]``
+		- ``included`` with shape ``[B]``
 		- ``scores`` with shape ``[B]`` (raw scores or probabilities)
 		"""
 		use_threshold = self.threshold if threshold is None else threshold
@@ -167,5 +167,5 @@ class OOD_Detector(nn.Module):
 
 		raw_scores = self.forward(tokens)
 		prob = self.score_to_probability(raw_scores)
-		is_ood = prob > use_threshold
-		return is_ood, prob
+		included = prob < use_threshold # Note: lower probability means more likely ID, so we include the image if prob < threshold
+		return included, prob
