@@ -147,12 +147,7 @@ def get_args_parser():
     parser.add_argument("--num-workers", type=int, default=10, help="Number of workers for data loaders")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--experiment-id", type=str, default="dinov3-training", help="Experiment ID for Weights & Biases")
-    parser.add_argument(
-        "--load-pretrained-backbone",
-        action="store_true",
-        default=False,
-        help="Load local DINOv3 backbone checkpoint before training",
-    )
+
 
     return parser
 
@@ -218,7 +213,12 @@ def main(args):
     model = Model(
         in_channels=3,  # RGB images
         n_classes=19,  # 19 classes in the Cityscapes dataset
-        load_backbone_for_training=True 
+        load_backbone_for_training=True,
+        head_hidden_channels=512,
+        head_num_layers=3,
+        use_multidepth_decoder=True,
+        multidepth_feature_levels=4,
+        
     ).to(device)
 
     # Define the loss function
