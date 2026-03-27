@@ -74,7 +74,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load model with OOD detection enabled
-    model = Model(load_backbone_for_training=False, ood=True)
+    model = Model(head_num_layers=3, load_backbone_for_training=False, ood=True)
     model.load_model_state_dict(MODEL_PATH)
     model.eval().to(device)
 
@@ -118,7 +118,7 @@ def main():
                 'include': bool(include_decision),
             })
 
-            print(f"[{img_path.name}] p={float(probability):.2f}: ", "OOD" if bool(include_decision) else "ID")
+            print(f"[{img_path.name}] p={float(probability):.3f}: ", "OOD" if bool(include_decision) else "ID")
 
     # Write predictions to CSV
     with open(csv_path, 'w', newline='') as f:

@@ -21,7 +21,7 @@ class Model(nn.Module):
         n_classes=19,
         load_backbone_for_training=True,
         head_hidden_channels=512,
-        head_num_layers=5,
+        head_num_layers=3,
         ood=False,
         ood_threshold=0.95,
     ):
@@ -29,6 +29,8 @@ class Model(nn.Module):
         self.in_channels = in_channels
         self.n_classes = n_classes
         self.load_backbone_for_training = load_backbone_for_training
+        self.head_num_layers = head_num_layers
+        self.head_hidden_channels = head_hidden_channels
         self.ood = ood
         self.ood_threshold = ood_threshold
         # Build DINOv3 ViT from local hub repo and load local checkpoint weights.
@@ -52,8 +54,8 @@ class Model(nn.Module):
         self.seg_head = MLPHead(
             in_channels=[self.embed_dim],
             n_output_channels=self.n_classes,
-            hidden_channels=head_hidden_channels,
-            num_layers=head_num_layers,
+            hidden_channels=self.head_hidden_channels,
+            num_layers=self.head_num_layers,
             use_batchnorm=False,
             use_cls_token=False,
         )
