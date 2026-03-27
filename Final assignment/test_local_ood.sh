@@ -9,5 +9,5 @@ docker run --network none --rm \
   -v "$(pwd)/local_output:/output" \
   nncv-submission:ood
 
-echo "Comparing results:"
+echo "Plotting results:"
 uv run inspect_results.py
