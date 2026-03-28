@@ -7,4 +7,4 @@ python3 train.py \
     --lr 0.001 \
     --num-workers 10 \
     --seed 42 \
-    --experiment-id "L16_mlp3_Multiplicative_09_startEpoch_10" \
+    --experiment-id "L16_All_MLP4_res1024_hiddenchannel256" \
