@@ -214,12 +214,15 @@ def main(args):
         in_channels=3,  # RGB images
         n_classes=19,  # 19 classes in the Cityscapes dataset
         load_backbone_for_training=True,
-        head_hidden_channels=512,
+        head_hidden_channels=256,
         head_num_layers=3,
         use_multidepth_decoder=True,
         multidepth_feature_levels=4,
         
     ).to(device)
+
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total Trainable Params: {trainable_params:,}")
 
     # Define the loss function
     criterion = nn.CrossEntropyLoss(ignore_index=255)  # Ignore the void class
@@ -314,8 +317,7 @@ def main(args):
                 )
                 torch.save(model.state_dict(), current_best_model_path)
 
-        if epoch > 10:
-            scheduler.step()
+        scheduler.step()
         
     print("Training complete!")
 
