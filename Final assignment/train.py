@@ -147,9 +147,33 @@ def get_args_parser():
     parser.add_argument("--num-workers", type=int, default=10, help="Number of workers for data loaders")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--experiment-id", type=str, default="dinov3-training", help="Experiment ID for Weights & Biases")
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="auto",
+        choices=("auto", "fp32", "fp16", "bf16"),
+        help="Training precision. auto picks bf16/fp16 on CUDA, otherwise fp32.",
+    )
 
 
     return parser
+
+
+def _resolve_precision(precision_arg: str) -> tuple[bool, torch.dtype | None, str]:
+    if precision_arg == "fp32":
+        return False, None, "fp32"
+    if precision_arg == "bf16":
+        if torch.cuda.is_bf16_supported():
+            return True, torch.bfloat16, "bf16"
+        print("Warning: bf16 requested but not supported. Falling back to fp16.")
+        return True, torch.float16, "fp16"
+    if precision_arg == "fp16":
+        return True, torch.float16, "fp16"
+
+    # auto mode: prefer bf16 (typically more stable), then fp16
+    if torch.cuda.is_bf16_supported():
+        return True, torch.bfloat16, "bf16"
+    return True, torch.float16, "fp16"
 
 
 def main(args):
@@ -172,8 +196,18 @@ def main(args):
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
 
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required for training in this script.")
+
     # Define the device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.set_float32_matmul_precision("high")
+
+    use_amp, amp_dtype, resolved_precision = _resolve_precision(args.precision)
+    use_grad_scaler = use_amp and amp_dtype == torch.float16
+    scaler = torch.cuda.amp.GradScaler(enabled=use_grad_scaler)
+    print(f"Using precision: {resolved_precision}")
 
     image_size = patch_nr * patch_size
     train_transforms = SegmentationTrainTransforms(size=image_size)
@@ -200,13 +234,15 @@ def main(args):
         train_dataset, 
         batch_size=args.batch_size, 
         shuffle=True,
-        num_workers=args.num_workers
+        num_workers=args.num_workers,
+        pin_memory=True,
     )
     valid_dataloader = DataLoader(
         valid_dataset, 
         batch_size=args.batch_size, 
         shuffle=False,
-        num_workers=args.num_workers
+        num_workers=args.num_workers,
+        pin_memory=True,
     )
 
     # Define the model
@@ -251,15 +287,27 @@ def main(args):
         for i, (images, labels) in enumerate(train_dataloader):
 
             labels = convert_to_train_id(labels)  # Convert class IDs to train IDs
-            images, labels = images.to(device), labels.to(device)
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
             labels = labels.long().squeeze(1)  # Remove channel dimension
 
             optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            if use_amp:
+                with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
+            else:
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+
+            if use_grad_scaler:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
 
             wandb.log({
                 "train_loss": loss.item(),
@@ -274,12 +322,18 @@ def main(args):
             for i, (images, labels) in enumerate(valid_dataloader):
 
                 labels = convert_to_train_id(labels)  # Convert class IDs to train IDs
-                images, labels = images.to(device), labels.to(device)
+                images = images.to(device, non_blocking=True)
+                labels = labels.to(device, non_blocking=True)
 
                 labels = labels.long().squeeze(1)  # Remove channel dimension
 
-                outputs = model(images)
-                loss = criterion(outputs, labels)
+                if use_amp:
+                    with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
+                        outputs = model(images)
+                        loss = criterion(outputs, labels)
+                else:
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
                 losses.append(loss.item())
             
                 if i == 0:
