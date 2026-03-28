@@ -10,7 +10,7 @@ class Model(nn.Module):
 
     EMBED_DIM = 1024 # large:1024, base:768
     PATCH_SIZE = 16
-    RESOLUTION = 512
+    RESOLUTION = 1024
     PRETRAINED_BACKBONE_WEIGHTS = "dinov3_vitl16_pretrained_weights.pth"
     BACKBONE_REPO = "dinov3"
     OOD_DETECTOR_WEIGHTS = "ood_detector_weights.pt"
@@ -20,7 +20,7 @@ class Model(nn.Module):
         in_channels=3,
         n_classes=19,
         load_backbone_for_training=True,
-        head_hidden_channels=512,
+        head_hidden_channels=256,
         head_num_layers=3,
         use_multidepth_decoder=False,
         multidepth_feature_levels=4,
@@ -57,6 +57,7 @@ class Model(nn.Module):
 
         if self.use_multidepth_decoder:
             self.multidepth_indices = self._build_multidepth_indices(self.multidepth_feature_levels)
+            print(f"Using multi-depth decoder with feature levels {self.multidepth_indices}, {self.head_num_layers} head layers, and {self.head_hidden_channels} hidden channels")
             self.seg_head = AllMLPDecoder(
                 in_channels=[self.embed_dim] * len(self.multidepth_indices),
                 n_output_channels=self.n_classes,
@@ -67,6 +68,7 @@ class Model(nn.Module):
             )
         else:
             self.multidepth_indices = None
+            print(f"Using standard MLP head with {self.head_num_layers} layers and {self.head_hidden_channels} hidden channels")
             self.seg_head = MLPHead(
                 in_channels=[self.embed_dim],
                 n_output_channels=self.n_classes,
@@ -76,6 +78,7 @@ class Model(nn.Module):
                 use_cls_token=False,
             )
         if self.ood:
+            print(f"Initializing OOD detector with threshold {self.ood_threshold}")
             self.ood_detector = OOD_Detector(
                 token_dim=self.embed_dim,
                 flow_dim=128,
