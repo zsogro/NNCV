@@ -214,9 +214,9 @@ def main(args):
         in_channels=3,  # RGB images
         n_classes=19,  # 19 classes in the Cityscapes dataset
         load_backbone_for_training=True,
-        head_hidden_channels=512,
+        head_hidden_channels=256,
         head_num_layers=3,
-        use_multidepth_decoder=True,
+        use_multidepth_decoder=True,  # All-MLP head
         multidepth_feature_levels=4,
         
     ).to(device)
