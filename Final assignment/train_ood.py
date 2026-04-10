@@ -84,6 +84,13 @@ def get_args_parser() -> ArgumentParser:
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay")
     parser.add_argument("--num-workers", type=int, default=8, help="DataLoader workers")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="auto",
+        choices=("auto", "fp32", "fp16", "bf16"),
+        help="Training precision. auto picks bf16/fp16 on CUDA, otherwise fp32.",
+    )
 
     parser.add_argument("--flow-dim", type=int, default=128, help="Projected token dimensionality for flow")
     parser.add_argument("--hidden-dim", type=int, default=256, help="Hidden size for projector/flow MLPs")
@@ -120,6 +127,23 @@ def get_args_parser() -> ArgumentParser:
     )
 
     return parser
+
+
+def _resolve_precision(precision_arg: str) -> tuple[bool, torch.dtype | None, str]:
+    if precision_arg == "fp32":
+        return False, None, "fp32"
+    if precision_arg == "bf16":
+        if torch.cuda.is_bf16_supported():
+            return True, torch.bfloat16, "bf16"
+        print("Warning: bf16 requested but not supported. Falling back to fp16.")
+        return True, torch.float16, "fp16"
+    if precision_arg == "fp16":
+        return True, torch.float16, "fp16"
+
+    # auto mode: prefer bf16 (typically more stable), then fp16
+    if torch.cuda.is_bf16_supported():
+        return True, torch.bfloat16, "bf16"
+    return True, torch.float16, "fp16"
 
 
 def _extract_patch_tokens(backbone_model: Model, images: torch.Tensor) -> torch.Tensor:
@@ -177,7 +201,17 @@ def main(args) -> None:
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required for training in this script.")
+
+    device = torch.device("cuda")
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.set_float32_matmul_precision("high")
+
+    use_amp, amp_dtype, resolved_precision = _resolve_precision(args.precision)
+    use_grad_scaler = use_amp and amp_dtype == torch.float16
+    scaler = torch.cuda.amp.GradScaler(enabled=use_grad_scaler)
+    print(f"Using precision: {resolved_precision}")
 
     output_dir = os.path.join(args.output_root, args.experiment_id)
     os.makedirs(output_dir, exist_ok=True)
@@ -239,9 +273,19 @@ def main(args) -> None:
             tokens = _extract_patch_tokens(backbone_model, images)
 
             optimizer.zero_grad(set_to_none=True)
-            loss = detector.loss(tokens)
-            loss.backward()
-            optimizer.step()
+            if use_amp:
+                with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
+                    loss = detector.loss(tokens)
+            else:
+                loss = detector.loss(tokens)
+
+            if use_grad_scaler:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
 
             train_losses.append(float(loss.item()))
 
@@ -268,10 +312,19 @@ def main(args) -> None:
                 images = images.to(device, non_blocking=True)
                 tokens = _extract_patch_tokens(backbone_model, images)
 
-                v_loss = detector.loss(tokens)
+                if use_amp:
+                    with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
+                        v_loss = detector.loss(tokens)
+                else:
+                    v_loss = detector.loss(tokens)
                 valid_losses.append(float(v_loss.item()))
 
-                scores = detector(tokens).detach().cpu()
+                if use_amp:
+                    with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
+                        scores = detector(tokens)
+                else:
+                    scores = detector(tokens)
+                scores = scores.detach().cpu()
                 valid_scores.append(scores)
 
                 if args.max_val_batches > 0 and step >= args.max_val_batches:
