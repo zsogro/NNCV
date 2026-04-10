@@ -169,3 +169,34 @@ class OOD_Detector(nn.Module):
 		prob = self.score_to_probability(raw_scores)
 		included = prob < use_threshold # Note: lower probability means more likely ID, so we include the image if prob < threshold
 		return included, prob
+
+
+class OOD_Detector_v2(OOD_Detector):
+	"""OOD detector v2 with neural spline coupling flows.
+
+	This class keeps the same constructor and public API as ``OOD_Detector``
+	so it can be swapped in without changing call sites.
+	"""
+
+	def _build_flow(self) -> nf.NormalizingFlow:
+		base = nf.distributions.base.DiagGaussian(self.flow_dim)
+		flows = []
+
+		for layer_idx in range(self.num_flow_layers):
+			flows.append(
+				nf.flows.CoupledRationalQuadraticSpline(
+					num_input_channels=self.flow_dim,
+					num_blocks=2,
+					num_hidden_channels=self.hidden_dim,
+					num_bins=8,
+					tails="linear",
+					tail_bound=3.0,
+					reverse_mask=(layer_idx % 2 == 1),
+					init_identity=True,
+				)
+			)
+			flows.append(nf.flows.Permute(self.flow_dim, mode="swap"))
+
+		return nf.NormalizingFlow(base, flows)
+
+
