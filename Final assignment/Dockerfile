@@ -30,7 +30,7 @@ WORKDIR /app
 COPY dinov3 /app/dinov3
 COPY head.py /app/head.py
 COPY ood_model.py /app/ood_model.py
-COPY model_l16_mlp3.pt /app/model.pt
+COPY model_L16_All_MLP8_res1024.pt /app/model.pt
 COPY ood_detector_weights_v2.pt /app/ood_detector_weights.pt
 COPY model.py /app/model.py
 COPY "${PREDICT_MODE}.py" /app/predict.py
