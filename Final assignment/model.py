@@ -23,9 +23,9 @@ class Model(nn.Module):
         head_hidden_channels=256,
         head_num_layers=3,
         use_multidepth_decoder=False,
-        multidepth_feature_levels=4,
+        multidepth_feature_levels=8,
         ood=False,
-        ood_threshold=0.95,
+        ood_threshold=0.6,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -255,3 +255,22 @@ class Model(nn.Module):
             return logits, is_ood, probability
         else:
             return logits
+
+
+if __name__ == "__main__":
+    # Example usage
+
+    model = Model(
+            in_channels=3,  # RGB images
+            n_classes=19,  # 19 classes in the Cityscapes dataset
+            load_backbone_for_training=False,
+            head_hidden_channels=512,
+            head_num_layers=4,
+            use_multidepth_decoder=True,
+            multidepth_feature_levels=4,
+            ood=False,
+            ood_threshold=0.95, 
+    )
+
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total Trainable Params: {trainable_params:,}")
