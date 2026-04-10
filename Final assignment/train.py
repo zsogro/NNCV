@@ -148,6 +148,19 @@ def get_args_parser():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--experiment-id", type=str, default="dinov3-training", help="Experiment ID for Weights & Biases")
     parser.add_argument(
+        "--backbone-train-last-n",
+        type=int,
+        default=0,
+        choices=(0, 1, 2),
+        help="Number of last DINO backbone blocks to fine-tune (0 disables backbone fine-tuning).",
+    )
+    parser.add_argument(
+        "--backbone-lr",
+        type=float,
+        default=1e-5,
+        help="Learning rate for unfrozen backbone blocks.",
+    )
+    parser.add_argument(
         "--precision",
         type=str,
         default="auto",
@@ -257,6 +270,12 @@ def main(args):
         
     ).to(device)
 
+    trainable_backbone_params = model.enable_backbone_finetune(args.backbone_train_last_n)
+    print(
+        f"Backbone fine-tuning: last_n_blocks={args.backbone_train_last_n}, "
+        f"trainable_backbone_params={trainable_backbone_params:,}, backbone_lr={args.backbone_lr:g}"
+    )
+
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total Trainable Params: {trainable_params:,}")
 
@@ -264,10 +283,26 @@ def main(args):
     criterion = nn.CrossEntropyLoss(ignore_index=255)  # Ignore the void class
 
     # Define the optimizer
-    optimizer = AdamW(
-        (parameter for parameter in model.parameters() if parameter.requires_grad),
-        lr=args.lr,
-    )
+    head_params = []
+    backbone_params = []
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        if name.startswith("backbone."):
+            backbone_params.append(parameter)
+        else:
+            head_params.append(parameter)
+
+    optimizer_param_groups = []
+    if head_params:
+        optimizer_param_groups.append({"params": head_params, "lr": args.lr})
+    if backbone_params:
+        optimizer_param_groups.append({"params": backbone_params, "lr": args.backbone_lr})
+
+    if not optimizer_param_groups:
+        raise RuntimeError("No trainable parameters found for optimizer.")
+
+    optimizer = AdamW(optimizer_param_groups)
 
     lmbda = lambda epoch: 0.9
     scheduler = torch.optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lmbda)

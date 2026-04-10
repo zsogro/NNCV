@@ -93,6 +93,38 @@ class Model(nn.Module):
         self.backbone.eval()
         return self
 
+    def enable_backbone_finetune(self, last_n_blocks: int) -> int:
+        """Unfreeze only the last N transformer blocks of the frozen backbone.
+
+        Returns the number of trainable backbone parameters.
+        """
+        if last_n_blocks < 0:
+            raise ValueError("last_n_blocks must be >= 0")
+
+        total_blocks = len(self.backbone.blocks)
+        if last_n_blocks > total_blocks:
+            raise ValueError(
+                f"Cannot unfreeze last {last_n_blocks} blocks: backbone has {total_blocks} blocks"
+            )
+
+        # Start from a fully frozen backbone, then selectively unfreeze tail blocks.
+        for parameter in self.backbone.parameters():
+            parameter.requires_grad = False
+
+        if last_n_blocks == 0:
+            return 0
+
+        for block in self.backbone.blocks[-last_n_blocks:]:
+            for parameter in block.parameters():
+                parameter.requires_grad = True
+
+        # Keep final normalization trainable when fine-tuning tail blocks.
+        if hasattr(self.backbone, "norm"):
+            for parameter in self.backbone.norm.parameters():
+                parameter.requires_grad = True
+
+        return sum(p.numel() for p in self.backbone.parameters() if p.requires_grad)
+
     def _load_backbone_weights(self, weights_path):
         print(f"Loading backbone weights from {weights_path}...")
         checkpoint_path = weights_path
