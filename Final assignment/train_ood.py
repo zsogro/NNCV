@@ -210,7 +210,7 @@ def main(args) -> None:
 
     use_amp, amp_dtype, resolved_precision = _resolve_precision(args.precision)
     use_grad_scaler = use_amp and amp_dtype == torch.float16
-    scaler = torch.cuda.amp.GradScaler(enabled=use_grad_scaler)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_grad_scaler)
     print(f"Using precision: {resolved_precision}")
 
     output_dir = os.path.join(args.output_root, args.experiment_id)
@@ -324,7 +324,8 @@ def main(args) -> None:
                         scores = detector(tokens)
                 else:
                     scores = detector(tokens)
-                scores = scores.detach().cpu()
+                # quantile() on CPU requires float32/float64; autocast may produce bf16.
+                scores = scores.detach().float().cpu()
                 valid_scores.append(scores)
 
                 if args.max_val_batches > 0 and step >= args.max_val_batches:
@@ -332,7 +333,7 @@ def main(args) -> None:
 
         valid_loss = sum(valid_losses) / max(len(valid_losses), 1)
 
-        score_tensor = torch.cat(valid_scores, dim=0)
+        score_tensor = torch.cat(valid_scores, dim=0).float()
         id_score_mean = float(score_tensor.mean().item())
         id_score_std = float(score_tensor.std(unbiased=False).clamp_min(1e-6).item())
         threshold = float(torch.quantile(score_tensor, args.threshold_quantile).item())
