@@ -266,7 +266,7 @@ def main(args):
         head_hidden_channels=256,
         head_num_layers=3,
         use_multidepth_decoder=True,  # All-MLP head
-        multidepth_feature_levels=4,
+        multidepth_feature_levels=8,
         
     ).to(device)
 
