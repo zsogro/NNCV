@@ -406,7 +406,8 @@ def main(args):
                 )
                 torch.save(model.state_dict(), current_best_model_path)
 
-        scheduler.step()
+        if epoch % 5 == 0:  # Update the scheduler every 5 epochs
+            scheduler.step()
         
     print("Training complete!")
 
