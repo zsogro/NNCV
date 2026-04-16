@@ -5,7 +5,6 @@ python3 train_ood.py \
     --batch-size 64 \
     --epochs 50 \
     --lr 0.001 \
-    --precision auto \
     --num-workers 10 \
     --seed 42 \
     --experiment-id "CoupledQuadraticSpline_v1" \
