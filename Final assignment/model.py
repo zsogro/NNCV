@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from pathlib import Path
 
 from head import MLPHead, AllMLPDecoder
-from ood_model import OOD_Detector_v2
+from ood_model import OOD_Detector_v1, OOD_Detector_v2
 
 class Model(nn.Module):
 
