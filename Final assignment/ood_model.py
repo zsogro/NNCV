@@ -192,7 +192,6 @@ class OOD_Detector_v2(OOD_Detector):
 					tails="linear",
 					tail_bound=3.0,
 					reverse_mask=(layer_idx % 2 == 1),
-					init_identity=True,
 				)
 			)
 			flows.append(nf.flows.Permute(self.flow_dim, mode="swap"))
