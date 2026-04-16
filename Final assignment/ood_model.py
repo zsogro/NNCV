@@ -3,7 +3,7 @@ import torch.nn as nn
 import normflows as nf
 
 
-class OOD_Detector(nn.Module):
+class OOD_Detector_v1(nn.Module):
 	"""Normalizing-flow based OOD detector operating on DINOv3 token features.
 
 	Expected token input shape is ``[B, T, D]`` where:
@@ -29,6 +29,8 @@ class OOD_Detector(nn.Module):
 			raise ValueError("hidden_dim must be > 0")
 		if num_flow_layers <= 0:
 			raise ValueError("num_flow_layers must be > 0")
+		
+		self.print_ood_type()
 
 		self.token_dim = token_dim
 		self.flow_dim = flow_dim
@@ -48,6 +50,9 @@ class OOD_Detector(nn.Module):
 		self.threshold: float | None = None
 		self.id_score_mean: float | None = None
 		self.id_score_std: float | None = None
+	
+	def print_ood_type(self):
+		print("Using OOD Detector v1 with masked affine flows.")
 
 	def _build_flow(self) -> nf.NormalizingFlow:
 		base = nf.distributions.base.DiagGaussian(self.flow_dim) # Simple isotropic Gaussian base distribution in flow space (latent space)
@@ -171,12 +176,15 @@ class OOD_Detector(nn.Module):
 		return included, prob
 
 
-class OOD_Detector_v2(OOD_Detector):
+class OOD_Detector_v2(OOD_Detector_v1):
 	"""OOD detector v2 with neural spline coupling flows.
 
 	This class keeps the same constructor and public API as ``OOD_Detector``
 	so it can be swapped in without changing call sites.
 	"""
+
+	def print_ood_type(self):
+		print("Using OOD Detector v2 with neural spline coupling flows.")
 
 	def _build_flow(self) -> nf.NormalizingFlow:
 		base = nf.distributions.base.DiagGaussian(self.flow_dim)
