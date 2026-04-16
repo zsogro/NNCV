@@ -84,13 +84,6 @@ def get_args_parser() -> ArgumentParser:
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay")
     parser.add_argument("--num-workers", type=int, default=8, help="DataLoader workers")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument(
-        "--precision",
-        type=str,
-        default="auto",
-        choices=("auto", "fp32", "fp16", "bf16"),
-        help="Training precision. auto picks bf16/fp16 on CUDA, otherwise fp32.",
-    )
 
     parser.add_argument("--flow-dim", type=int, default=128, help="Projected token dimensionality for flow")
     parser.add_argument("--hidden-dim", type=int, default=256, help="Hidden size for projector/flow MLPs")
@@ -127,23 +120,6 @@ def get_args_parser() -> ArgumentParser:
     )
 
     return parser
-
-
-def _resolve_precision(precision_arg: str) -> tuple[bool, torch.dtype | None, str]:
-    if precision_arg == "fp32":
-        return False, None, "fp32"
-    if precision_arg == "bf16":
-        if torch.cuda.is_bf16_supported():
-            return True, torch.bfloat16, "bf16"
-        print("Warning: bf16 requested but not supported. Falling back to fp16.")
-        return True, torch.float16, "fp16"
-    if precision_arg == "fp16":
-        return True, torch.float16, "fp16"
-
-    # auto mode: prefer bf16 (typically more stable), then fp16
-    if torch.cuda.is_bf16_supported():
-        return True, torch.bfloat16, "bf16"
-    return True, torch.float16, "fp16"
 
 
 def _extract_patch_tokens(backbone_model: Model, images: torch.Tensor) -> torch.Tensor:
@@ -208,11 +184,6 @@ def main(args) -> None:
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_float32_matmul_precision("high")
 
-    use_amp, amp_dtype, resolved_precision = _resolve_precision(args.precision)
-    use_grad_scaler = use_amp and amp_dtype == torch.float16
-    scaler = torch.amp.GradScaler("cuda", enabled=use_grad_scaler)
-    print(f"Using precision: {resolved_precision}")
-
     output_dir = os.path.join(args.output_root, args.experiment_id)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -273,19 +244,9 @@ def main(args) -> None:
             tokens = _extract_patch_tokens(backbone_model, images)
 
             optimizer.zero_grad(set_to_none=True)
-            if use_amp:
-                with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
-                    loss = detector.loss(tokens)
-            else:
-                loss = detector.loss(tokens)
-
-            if use_grad_scaler:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                optimizer.step()
+            loss = detector.loss(tokens)
+            loss.backward()
+            optimizer.step()
 
             train_losses.append(float(loss.item()))
 
@@ -312,20 +273,11 @@ def main(args) -> None:
                 images = images.to(device, non_blocking=True)
                 tokens = _extract_patch_tokens(backbone_model, images)
 
-                if use_amp:
-                    with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
-                        v_loss = detector.loss(tokens)
-                else:
-                    v_loss = detector.loss(tokens)
+                v_loss = detector.loss(tokens)
                 valid_losses.append(float(v_loss.item()))
 
-                if use_amp:
-                    with torch.amp.autocast(device_type="cuda", dtype=amp_dtype):
-                        scores = detector(tokens)
-                else:
-                    scores = detector(tokens)
-                # quantile() on CPU requires float32/float64; autocast may produce bf16.
-                scores = scores.detach().float().cpu()
+                scores = detector(tokens)
+                scores = scores.detach().cpu()
                 valid_scores.append(scores)
 
                 if args.max_val_batches > 0 and step >= args.max_val_batches:
@@ -333,7 +285,7 @@ def main(args) -> None:
 
         valid_loss = sum(valid_losses) / max(len(valid_losses), 1)
 
-        score_tensor = torch.cat(valid_scores, dim=0).float()
+        score_tensor = torch.cat(valid_scores, dim=0)
         id_score_mean = float(score_tensor.mean().item())
         id_score_std = float(score_tensor.std(unbiased=False).clamp_min(1e-6).item())
         threshold = float(torch.quantile(score_tensor, args.threshold_quantile).item())

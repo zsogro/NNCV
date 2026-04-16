@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from pathlib import Path
 
 from head import MLPHead, AllMLPDecoder
-from ood_model import OOD_Detector
+from ood_model import OOD_Detector_v2
 
 class Model(nn.Module):
 
@@ -79,7 +79,7 @@ class Model(nn.Module):
             )
         if self.ood:
             print(f"Initializing OOD detector with threshold {self.ood_threshold}")
-            self.ood_detector = OOD_Detector(
+            self.ood_detector = OOD_Detector_v2(
                 token_dim=self.embed_dim,
                 flow_dim=128,
                 hidden_dim=256,
