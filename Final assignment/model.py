@@ -25,7 +25,7 @@ class Model(nn.Module):
         use_multidepth_decoder=False,
         multidepth_feature_levels=8,
         ood=False,
-        ood_threshold=0.6,
+        ood_threshold=0.95,
     ):
         super().__init__()
         self.in_channels = in_channels
