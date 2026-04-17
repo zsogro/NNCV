@@ -30,8 +30,14 @@ WORKDIR /app
 COPY dinov3 /app/dinov3
 COPY head.py /app/head.py
 COPY ood_model.py /app/ood_model.py
-COPY model_L16_All_MLP8_res1024.pt /app/model.pt
-COPY ood_detector_weights_v2.pt /app/ood_detector_weights.pt
-COPY model.py /app/model.py
-COPY "${PREDICT_MODE}.py" /app/predict.py
+# COPY model_L16_All_MLP8_res1024_scheduler_5epochs.pt /app/model.pt
+COPY ood-detector-v1.pt /app/ood_detector_weights.pt
+# COPY ood-detector-v2.pt /app/ood_detector_weights.pt
+# COPY model.py /app/model.py
+# COPY "${PREDICT_MODE}.py" /app/predict.py
+
+COPY unet.py /app/model.py
+COPY model_unet.pt /app/model.pt
+COPY predict_unet.py /app/predict.py
+
 ENTRYPOINT ["python", "/app/predict.py"]
