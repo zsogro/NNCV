@@ -32,7 +32,7 @@ _NF_LOCAL_REPO = _THIS_DIR / "normalizing-flows"
 if _NF_LOCAL_REPO.exists() and str(_NF_LOCAL_REPO) not in sys.path:
     sys.path.insert(0, str(_NF_LOCAL_REPO))
 
-from ood_model import OOD_Detector_v2
+from ood_model import OOD_Detector_v1, OOD_Detector_v2
 
 
 class OODTrainTransforms:
@@ -141,7 +141,7 @@ def _build_backbone(device: torch.device) -> Model:
 
 def _save_checkpoint(
     output_path: str,
-    detector: OOD_Detector_v2,
+    detector: OOD_Detector_v1,
     args,
     epoch: int,
     train_loss: float,
@@ -222,7 +222,7 @@ def main(args) -> None:
     )
 
     backbone_model = _build_backbone(device)
-    detector = OOD_Detector_v2(
+    detector = OOD_Detector_v1(
         token_dim=backbone_model.embed_dim,
         flow_dim=args.flow_dim,
         hidden_dim=args.hidden_dim,
