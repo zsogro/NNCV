@@ -118,6 +118,12 @@ def _load_non_ood_weights_strict(model: Model, state_dict: dict) -> None:
             "Checkpoint has unexpected keys: " + ", ".join(load_info.unexpected_keys)
         )
 
+
+def _count_parameters(module: torch.nn.Module) -> tuple[int, int]:
+    total = sum(p.numel() for p in module.parameters())
+    trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+    return total, trainable
+
 def preprocess(img: Image.Image) -> torch.Tensor:
     # Implement your preprocessing steps here
     # For example, resizing, normalization, etc.
@@ -174,9 +180,12 @@ def main():
         head_num_layers=head_config["head_num_layers"],
         head_hidden_channels=head_config["head_hidden_channels"],
         ood=True,
-        ood_type=2,  # Use OOD_Detector_v2 with neural spline coupling flows
+        ood_type=1,         # 1: masked affine flows, 2: neural spline coupling flows
         ood_threshold=0.80,  # Set your desired OOD threshold here
     )
+
+    total_params, trainable_params = _count_parameters(model)
+    print(f"OOD Model Params: total={total_params:,}, trainable={trainable_params:,}")
 
     _load_non_ood_weights_strict(model, state_dict)
     model.eval().to(device)

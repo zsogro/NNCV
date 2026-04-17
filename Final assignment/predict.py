@@ -37,6 +37,12 @@ PATCH_SIZE = Model.PATCH_SIZE
 PATCH_NR = Model.RESOLUTION // PATCH_SIZE  # Number of patches along one dimension, used for postprocessing to ensure correct resizing of output masks
 
 
+def _count_parameters(module: torch.nn.Module) -> tuple[int, int]:
+    total = sum(p.numel() for p in module.parameters())
+    trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+    return total, trainable
+
+
 def _extract_state_dict(checkpoint):
     if isinstance(checkpoint, dict):
         if "state_dict" in checkpoint and isinstance(checkpoint["state_dict"], dict):
@@ -153,6 +159,9 @@ def main():
         head_num_layers=head_config["head_num_layers"],
         head_hidden_channels=head_config["head_hidden_channels"],
     )
+
+    total_params, trainable_params = _count_parameters(model)
+    print(f"Model Params: total={total_params:,}, trainable={trainable_params:,}")
 
     model.load_state_dict(
         state_dict, 
