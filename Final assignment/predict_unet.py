@@ -84,7 +84,7 @@ def main():
 
     with torch.no_grad():
         for img_path in image_files:
-            img = Image.open(img_path)
+            img = Image.open(img_path).convert("RGB")
             original_shape = np.array(img).shape[:2]
 
             # Preprocess
