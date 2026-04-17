@@ -174,6 +174,8 @@ def main():
         head_num_layers=head_config["head_num_layers"],
         head_hidden_channels=head_config["head_hidden_channels"],
         ood=True,
+        ood_type=2,  # Use OOD_Detector_v2 with neural spline coupling flows
+        ood_threshold=0.80,  # Set your desired OOD threshold here
     )
 
     _load_non_ood_weights_strict(model, state_dict)

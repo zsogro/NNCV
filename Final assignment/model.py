@@ -25,6 +25,7 @@ class Model(nn.Module):
         use_multidepth_decoder=False,
         multidepth_feature_levels=8,
         ood=False,
+        ood_type=1,  # 1 for OOD_Detector_v1, 2 for OOD_Detector_v2
         ood_threshold=0.95,
     ):
         super().__init__()
@@ -36,6 +37,7 @@ class Model(nn.Module):
         self.use_multidepth_decoder = use_multidepth_decoder
         self.multidepth_feature_levels = multidepth_feature_levels
         self.ood = ood
+        self.ood_type = ood_type
         self.ood_threshold = ood_threshold
         # Build DINOv3 ViT from local hub repo and load local checkpoint weights.
         self.backbone = torch.hub.load(
@@ -79,12 +81,21 @@ class Model(nn.Module):
             )
         if self.ood:
             print(f"Initializing OOD detector with threshold {self.ood_threshold}")
-            self.ood_detector = OOD_Detector_v2(
-                token_dim=self.embed_dim,
-                flow_dim=128,
-                hidden_dim=256,
-                num_flow_layers=8,
-                token_sample_size=4096,
+            if self.ood_type == 1:
+                self.ood_detector = OOD_Detector_v1(
+                    token_dim=self.embed_dim,
+                    flow_dim=128,
+                    hidden_dim=256,
+                    num_flow_layers=8,
+                    token_sample_size=4096,
+                )
+            else:
+                self.ood_detector = OOD_Detector_v2(
+                    token_dim=self.embed_dim,
+                    flow_dim=128,
+                    hidden_dim=256,
+                    num_flow_layers=8,
+                    token_sample_size=4096,
             )
             self._load_ood_detector_weights(self.OOD_DETECTOR_WEIGHTS)
 
