@@ -13,6 +13,7 @@ My model is using the DINOv3 backbone with a multi-depth segmentation head and a
    ```bash
    srun apptainer exec --nv --env-file .env container_v3.sif /bin/bash main.sh
    ```
+5. You should have and init `uv`, if not, change the helpers when testing to run the inspect_results.py accordingly.
 
 ## Training
 ### 1. Segmentation Model
