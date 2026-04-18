@@ -8,6 +8,7 @@ the `preprocess` and `postprocess` functions to fit your model's input
 and output requirements.
 """
 from pathlib import Path
+import time
 
 import torch
 import torch.nn as nn
@@ -72,6 +73,11 @@ def postprocess(pred: torch.Tensor, original_shape: tuple) -> np.ndarray:
     return prediction_numpy
 
 
+def _synchronize_if_cuda(device: str) -> None:
+    if device == "cuda":
+        torch.cuda.synchronize()
+
+
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -95,6 +101,10 @@ def main():
     image_files = list(Path(IMAGE_DIR).glob("*.png"))  # DO NOT CHANGE, IMAGES WILL BE PROVIDED IN THIS FORMAT
     print(f"Found {len(image_files)} images to process.")
 
+    total_start = time.perf_counter()
+    total_forward_time = 0.0
+    processed_images = 0
+
     with torch.no_grad():
         for img_path in image_files:
             img = Image.open(img_path).convert("RGB")
@@ -104,7 +114,12 @@ def main():
             img_tensor = preprocess(img).to(device)
 
             # Forward pass
+            _synchronize_if_cuda(device)
+            forward_start = time.perf_counter()
             pred = model(img_tensor)
+            _synchronize_if_cuda(device)
+            total_forward_time += time.perf_counter() - forward_start
+            processed_images += 1
 
             # Postprocess to segmentation mask
             seg_pred = postprocess(pred, original_shape)
@@ -115,6 +130,14 @@ def main():
 
             # Save predicted mask
             Image.fromarray(seg_pred.astype(np.uint8)).save(out_path)
+
+    total_runtime = time.perf_counter() - total_start
+    if processed_images > 0:
+        avg_forward_ms = (total_forward_time / processed_images) * 1000.0
+        forward_fps = processed_images / total_forward_time if total_forward_time > 0 else float("inf")
+        end_to_end_fps = processed_images / total_runtime if total_runtime > 0 else float("inf")
+        print(f"Inference speed (forward only): {avg_forward_ms:.2f} ms/image ({forward_fps:.2f} img/s)")
+        print(f"Inference speed (end-to-end): {total_runtime:.2f} s total ({end_to_end_fps:.2f} img/s)")
 
 
 if __name__ == "__main__":
