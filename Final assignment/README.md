@@ -18,7 +18,8 @@ My model is using the DINOv3 backbone with a multi-depth segmentation head and a
 ## Training
 ### 1. Segmentation Model
 1. Change the experiment id in `jobscript_slurm.sh` to something logical.
-2. Make sure that main.sh runs the `train.py`, then just type `sbatch jobscript_slurm.sh` and hit enter. Then to check the status type `watch squeue`.
+2. Place the pretrained DINO weights into the repo with a correct name, so the Model can use it.
+3. Make sure that main.sh runs the `train.py`, then just type `sbatch jobscript_slurm.sh` and hit enter. Then to check the status type `watch squeue`.
 
 ### 2. Out-of-Distribution Model
 1. Change the experiment id in `jobscript_slurm.sh` to something logical.
@@ -28,6 +29,7 @@ My model is using the DINOv3 backbone with a multi-depth segmentation head and a
 ## Testing
 I made a few helper scripts so you don't have to build the Docker when you want to test it. 
 1. Place your images to the `local_data` directory.
-2. In case of testing the OOD, select between v1/v2 and choose the threshold in `predict_ood.py` in lines `183-184`, and change the ood weights in the Dockerfile accordingly.
-3. Type `./test_local_peak.sh` or `./test_local_ood.sh`.
-4. Inspect the results in the `colorized_output` directory.
+2. Copy your weights from training into the repo, and set a correct name in the Dockerfile.
+3. In case of testing the OOD, select between v1/v2 and choose the threshold in `predict_ood.py` in lines `183-184`, and change the ood weights in the Dockerfile accordingly.
+4. Type `./test_local_peak.sh` or `./test_local_ood.sh`.
+5. Inspect the results in the `colorized_output` directory.
