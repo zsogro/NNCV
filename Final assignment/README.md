@@ -1,4 +1,9 @@
-# Final Assignment: Cityscape Challenge  
+# Size Does Matter
+- Final assignment for the Cityscapes challenge. 
+- Username in the submission pages: anything starting with Zsolt<...>
+- Email: z.grodvalt@student.tue.nl
+- `1.` in OOD detection 🏆
+- `8.` Place in Robustness
 
 ## Prerequisits
 My model is using the DINOv3 backbone with a multi-depth segmentation head and an OOD detector.
